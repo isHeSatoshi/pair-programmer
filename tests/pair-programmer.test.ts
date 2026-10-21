@@ -45,6 +45,18 @@ test('the first claim wins and the second one is told who holds it', () => {
   assert.equal(clash.held_by.owner, 'alice');
 });
 
+test('two agents on the same file are flagged even on different tickets', () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
+  b.sit(alice);
+  b.sit(bob);
+  b.actions.claim({ ...alice, task: 'TICKET-42 auth work', files: ['src/auth.py'] });
+  const second = b.actions.claim({ ...bob, task: 'TICKET-51 login work', files: ['src/auth.py'] });
+  assert.equal(second.status, 'claimed');
+  assert.equal(second.overlaps[0].owner, 'alice');
+  assert.deepEqual(second.overlaps[0].files, ['src/auth.py']);
+});
+
 test('a delegation lands in the other desk and the result comes back', () => {
   const b = createBoard();
   const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
@@ -54,8 +66,9 @@ test('a delegation lands in the other desk and the result comes back', () => {
   assert.equal(handed.delegated_to.owner, 'alice');
   const inbox = b.actions.take({ ...alice });
   assert.equal(inbox.tasks.length, 1);
+  assert.equal(b.actions.result({ task_key: inbox.tasks[0].task_key }).ok, false);
   b.actions.report({ ...alice, task_key: inbox.tasks[0].task_key, state: 'done', result: 'token bucket' });
-  assert.equal(b.actions.status({}).delegations[0].result, 'token bucket');
+  assert.equal(b.actions.result({ task_key: inbox.tasks[0].task_key }).result.result, 'token bucket');
 });
 
 test('the demo: two agents, one ticket, no duplicated work', () => {
@@ -105,12 +118,15 @@ test('the MCP server answers initialize, lists the tools and runs them', async (
                                             clientInfo: { name: 'test', version: '1' } });
     assert.equal(init.result.serverInfo.name, 'pair-programmer');
     const tools = await ask('tools/list');
-    assert.equal(tools.result.tools.length, 6);
+    assert.equal(tools.result.tools.length, 7);
     const reply = await ask('tools/call', { name: 'pair_claim',
                                             arguments: { task: 'TICKET-42 add auth middleware' } });
     const outcome = JSON.parse(reply.result.content[0].text);
     assert.equal(outcome.status, 'claimed');
     assert.equal(reply.result.isError, false);
+    const read = await ask('tools/call', { name: 'pair_result',
+                                            arguments: { task_key: outcome.task_key } });
+    assert.equal(JSON.parse(read.result.content[0].text).ok, false);
   } finally {
     child.kill();
     server.close();

@@ -18,12 +18,18 @@ lets one agent hand work to another.
 1. At the start of a task, call `pair_next_task`. A teammate may have handed
    you something. Take it before you start your own work.
 2. Call `pair_status` to see who is here and what they are holding.
-3. Call `pair_claim` with the task, before you edit anything.
+3. Call `pair_claim` with the task and the files you expect to touch, before
+   you edit anything.
 4. If the claim comes back `conflict`, somebody else already has it. Do not
    start. Read the `message` and `held_by`, then pick different work, or
    delegate the parts that are not theirs.
-5. Do the work.
-6. Call `pair_report` with the task key and a short result.
+5. If the claim comes back `claimed` with `overlaps`, other people are editing
+   the same files even though it is a different ticket. Say so in your reply
+   to the user and split the work before you both write to the same lines.
+6. Do the work.
+7. Call `pair_report` with the task key and a short result.
+8. If you handed the work to somebody else, call `pair_result` with the task
+   key to read what they came back with.
 
 ## Naming a task so both agents agree
 
@@ -49,7 +55,8 @@ conversation.
 pair_delegate(
   task="TICKET-51 write the rate limit middleware",
   to="alice",
-  brief="Bucket per API key, 60 requests a minute, return 429 with Retry-After."
+  brief="Bucket per API key, 60 requests a minute, return 429 with Retry-After.",
+  files=["src/ratelimit.py"]
 )
 ```
 
@@ -67,7 +74,7 @@ once you are not working on it.
 - The office is local. There is no account to create and nothing to pay for.
   The connection between desks is the LAN.
 - Nothing is sent anywhere. The board lives on the host's machine.
-- A claim covers a task, not a file. Two different tickets that touch the same
-  file are still two different pieces of work, and the merge is on you.
+- A claim covers a task, and a file overlap is a warning rather than a block.
+  Two agents on the same file is still a merge you have to do.
 - The office is advisory. It will not stop you from editing a file. It tells
   you that somebody else is already there, which is usually enough.

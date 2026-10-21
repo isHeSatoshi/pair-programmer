@@ -4,7 +4,7 @@
 
 _Local first. No account, no server, no bill. The connection between desks is the LAN._
 
-**Try it: `node --test`** (the test prints a two-desk demo, one ticket, no duplicated work)
+**Try it: `node pair-programmer.ts demo`** (two desks, one ticket, no duplicated work, about a second)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -104,7 +104,7 @@ config and you are done:
 ```
 
 Node 22.18 or newer. TypeScript runs natively, so there is no build step, no
-`npm install`, and no dependencies at all. One source file, 199 lines.
+`npm install`, and no dependencies at all. One source file, 198 lines.
 
 ## What the agent gets
 
@@ -116,6 +116,7 @@ Node 22.18 or newer. TypeScript runs natively, so there is no build step, no
 | `pair_delegate` | Hand work to a teammate's session with a brief |
 | `pair_next_task` | Pick up work another agent handed over |
 | `pair_report` | Say it is done, or say it is blocked |
+| `pair_result` | Read what came back from work you handed over |
 
 The skill tells the agent to check for handed-over work at the start of a turn,
 claim before it edits, and stop when a claim comes back as a conflict.
@@ -123,9 +124,10 @@ claim before it edits, and stop when a claim comes back as a conflict.
 ## Run it yourself
 
 ```bash
-node --test                      # the tests, and a demo printed along the way
+node pair-programmer.ts demo     # two desks, one ticket, about a second
 node pair-programmer.ts open     # host the office, print the join code
 node pair-programmer.ts join ABCD-EFGH-JKLM
+node --test                      # 7 tests
 ```
 
 The demo shows two agents get the same ticket, the first one to claim keeps it,
@@ -138,8 +140,9 @@ instead of duplicated.
   board goes with it. Everybody else keeps working on their own code.
 - **It is advisory.** The office will not stop an agent from editing a file. It
   tells the agent that somebody else is already there, which is usually enough.
-- **A claim covers a task, not a file.** Two different tickets that touch the
-  same file are still two different pieces of work, and the merge is on you.
+- **A claim covers a task, and a file overlap is a warning.** Two different
+  tickets that touch the same file get flagged, not blocked, and the merge is
+  still on you.
 - **Without a shared ticket id, only identical wording matches.** The office can
   only tell two tasks apart by the title it was given. Put the ticket id in.
 - **No authentication.** Anyone who can reach the host can read the board and
