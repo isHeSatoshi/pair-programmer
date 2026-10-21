@@ -96,11 +96,20 @@ const serveMcp = async () => {
 
 // -------------------------------------------------------------------- the command line
 
+// The address a teammate can actually reach. Virtual adapters (Docker, WSL,
+// Hyper-V) answer first, so prefer a plain private LAN range.
 const localAddress = () => {
-  for (const list of Object.values(networkInterfaces()))
-    for (const entry of list || [])
-      if (entry.family === 'IPv4' && !entry.internal) return entry.address;
-  return '127.0.0.1';
+  const score = (address: string) => {
+    if (address.startsWith('192.168.')) return 4;
+    if (address.startsWith('10.')) return 3;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(address)) return 2;
+    if (address.startsWith('169.254.')) return 0;
+    return 1;
+  };
+  const candidates = Object.values(networkInterfaces()).flatMap(list => list || [])
+    .filter(entry => entry.family === 'IPv4' && !entry.internal);
+  const best = candidates.sort((a, b) => score(b.address) - score(a.address))[0];
+  return best ? best.address : '127.0.0.1';
 };
 
 const demo = () => {
