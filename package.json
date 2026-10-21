@@ -11,5 +11,5 @@
     "test": "node --test tests/",
     "typecheck": "tsc --noEmit"
   },
-  "files": ["pair-programmer.ts", "office.ts", "skills", "icon.png", "icon-dark.png", "pair-programmer.mcp.json", ".minimax-plugin"]
+  "files": ["pair-programmer.ts", "skills", "icon.png", "icon-dark.png", "pair-programmer.mcp.json", ".minimax-plugin"]
 }
