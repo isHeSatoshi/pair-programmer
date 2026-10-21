@@ -1,0 +1,15 @@
+{
+  "name": "pair-programmer",
+  "version": "1.0.0",
+  "description": "A shared office where teammate agents coordinate instead of duplicating work.",
+  "type": "module",
+  "license": "MIT",
+  "author": "isHeSatoshi",
+  "bin": { "pair-programmer": "./pair-programmer.ts" },
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "node --test tests/",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": ["pair-programmer.ts", "office.ts", "skills", "icon.png", "icon-dark.png", "pair-programmer.mcp.json", ".minimax-plugin"]
+}
