@@ -5,9 +5,6 @@
       "type": "stdio",
       "command": "node",
       "args": ["./pair-programmer.ts", "mcp"],
-      "env": {
-        "PAIRPROGRAMMER_HARNESS": "minimax"
-      },
       "description": "The shared office board: claim work, delegate work, see who is here.",
       "timeout": 30000
     }

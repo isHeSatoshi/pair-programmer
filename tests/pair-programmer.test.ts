@@ -131,7 +131,7 @@ test('the MCP server answers initialize, lists the tools and runs them', async (
     JSON.stringify({ role: 'guest', hub: `http://127.0.0.1:${port}`, name: 'tester' }));
 
   const child = spawn(process.execPath, [join(ROOT, 'pair-programmer.ts'), 'mcp'], {
-    env: { ...process.env, PAIRPROGRAMMER_HOME: home, PAIRPROGRAMMER_HARNESS: 'minimax' },
+    env: { ...process.env, PAIRPROGRAMMER_HOME: home, PAIRPROGRAMMER_HARNESS: 'test' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 

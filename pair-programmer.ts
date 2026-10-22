@@ -2,7 +2,7 @@
 // Pair Programmer: a shared office where teammate agents coordinate instead of duplicating work. One host, everybody joins with a 12 character code: open | join CODE | mcp
 import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -208,12 +208,14 @@ const cli = async (argv: string[]) => {
     const state = ['done', 'failed', 'released'].includes(rest[rest.length - 1]) ? rest.pop() : 'done';
     const reply = await call(base, 'report', { ...me, task_key: rest[0], state, result: rest.slice(1).join(' ') });
     console.log(reply.ok ? `reported  ${reply.state}  ${reply.task_key}` : reply.error);
-  } else if (command === 'install') {
-    const target = join(homedir(), '.minimax', 'plugins', 'pair-programmer');
-    for (const item of ['.minimax-plugin', 'icon.png', 'icon-dark.png', 'pair-programmer.mcp.json', 'skills', 'pair-programmer.ts'])
-      cpSync(join(import.meta.dirname, item), join(target, item), { recursive: true });
-    console.log(`installed the plugin into ${target}`);
-  } else console.log('pair-programmer\n  open      open the office and print the join code\n  join <code>   join somebody else\'s office\n  status     who is in the office\n  claim <work>    claim a piece of work\n  next      pick up work a teammate handed you\n  report <key> [result] [done|failed|released]   say how it went\n  delegate <work> <who>   hand work over\n  install   install the plugin');
+  } else if (command === 'config') {
+    // No vendor directory and no vendor manifest: the server speaks MCP over stdio,
+    // so every harness wires it up the same way, by pointing at this file.
+    const self = join(import.meta.dirname, 'pair-programmer.ts');
+    mkdirSync(HOME, { recursive: true });
+    writeFileSync(join(HOME, 'mcp.json'), JSON.stringify({ mcpServers: { 'pair-programmer': { command: 'node', args: [self, 'mcp'] } } }, null, 2) + '\n');
+    console.log(`the office speaks MCP over stdio, so any harness can run it:\n  server  node ${self} mcp\n\n  claude code  claude mcp add pair-programmer -- node ${self} mcp\n  codex        [mcp_servers.pair-programmer]  command = "node"  args = ["${self}", "mcp"]\n  anything else  point its MCP config at the server command above\n\n  a copy of the json is in ${join(HOME, 'mcp.json')}`);
+  } else console.log('pair-programmer\n  open      open the office and print the join code\n  join <code>   join somebody else\'s office\n  status     who is in the office\n  claim <work>    claim a piece of work\n  next      pick up work a teammate handed you\n  report <key> [result] [done|failed|released]   say how it went\n  delegate <work> <who>   hand work over\n  config    print the MCP config for your harness');
   return 0;
 };
 

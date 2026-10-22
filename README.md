@@ -4,7 +4,9 @@
 
 _Local first. No account, no cloud, no bill. One of you runs the office and everybody else joins over the LAN._
 
-**[Watch the 60 second demo](video/pair-programmer.mp4)**
+![Two agents claim the same ticket, one gets told to stop, and the other picks up a task that was handed to it](video/demo.gif)
+
+**[Watch the full 60 second demo with sound](video/pair-programmer.mp4)**
 
 **Try it: `node pair-programmer.ts open`**, then on another machine
 `node pair-programmer.ts join <code>`
@@ -33,9 +35,9 @@ _Local first. No account, no cloud, no bill. One of you runs the office and ever
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Hackathon office hours: five people, five agents, five coding harnesses, one
-repo. Every brief lands in every agent at the same time, so every agent starts
-the same task. Nobody is idle and everybody is duplicating.
+A team on one repo: five developers, five agents, five coding harnesses. Every
+brief lands in every agent at the same time, so every agent starts the same
+task. Nobody is idle and everybody is duplicating.
 
 Pair Programmer gives each harness session a desk in a shared office. A desk
 knows which work is taken and who is free, so an agent claims a task before it
@@ -85,26 +87,45 @@ flowchart LR
 
 ## Install
 
+There is no plugin to install and no bundle to unpack. The office is an MCP
+server over stdio, so every harness wires it up the same way: point it at the
+one file.
+
 ```bash
 git clone https://github.com/isHeSatoshi/pair-programmer && cd pair-programmer
-node pair-programmer.ts install
+node pair-programmer.ts config   # prints this config filled in for your machine
 ```
-
-That copies the plugin into `~/.minimax/plugins/pair-programmer`. For any other
-harness, the same server speaks MCP over stdio, so paste this into its MCP
-config and you are done:
 
 ```json
 {
   "mcpServers": {
     "pair-programmer": {
       "command": "node",
-      "args": ["/path/to/pair-programmer/pair-programmer.ts", "mcp"],
-      "env": { "PAIRPROGRAMMER_HARNESS": "claude" }
+      "args": ["/path/to/pair-programmer/pair-programmer.ts", "mcp"]
     }
   }
 }
 ```
+
+Claude Code (`claude mcp add pair-programmer -- node .../pair-programmer.ts mcp`),
+Codex, Cursor, Zed and anything else that speaks MCP take a config of that
+shape. There is no vendor directory, no plugin manifest and no harness-specific
+code. A harness can report its own name through `PAIRPROGRAMMER_HARNESS` if it
+wants to, but the office works the same without it.
+
+### Teaching the agent when to use it
+
+MCP gives the agent the tools. It does not tell the agent *when* to reach for
+them, and an agent that never calls `pair_claim` saves you nothing. That part is
+a short instruction file, and it is plain markdown:
+
+- **Claude Code and harnesses with skills**: `skills/pair-programmer/SKILL.md`
+- **Anything that reads `AGENTS.md`**: paste that same file's body into your
+  `AGENTS.md`, or copy it to `.pair-programmer.md` and reference it
+
+The instructions are the same either way: check for handed-over work at the
+start of a turn, claim before you edit, and stop when a claim comes back as a
+conflict.
 
 Node 22.18 or newer. TypeScript runs natively, so there is no build step, no
 `npm install`, and no dependencies at all. One source file, 189 lines of code.
@@ -128,7 +149,7 @@ claim before it edits, and stop when a claim comes back as a conflict.
 
 ```bash
 node pair-programmer.ts open                # host the office, print the join code
-node pair-programmer.ts join ABCD-EFGH-JKLM # a teammate joins from another machine
+node pair-programmer.ts join R2M0-2AGX-1PYG # a teammate joins from another machine
 node pair-programmer.ts status              # who is in the office, what is taken
 node pair-programmer.ts claim "TICKET-42 add auth middleware"
 node pair-programmer.ts next                # pick up work a teammate handed you
@@ -162,4 +183,4 @@ Node 22 and nothing else. No dependencies, no database, no cloud service. The
 board lives in memory on the machine that ran `open`, and every other desk
 talks to it over HTTP.
 
-MIT licensed. Build it for your hackathon, tell me what breaks.
+MIT licensed. Pair it with your team, tell me what breaks.
