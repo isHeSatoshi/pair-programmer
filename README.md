@@ -6,7 +6,7 @@ _Local first. No account, no cloud, no bill. One of you runs the office and ever
 
 ![Two agents claim the same ticket, one gets told to stop, and the other picks up a task that was handed to it](video/demo.gif)
 
-**[Watch the full 60 second demo with sound](video/pair-programmer.mp4)**
+**[Watch the full 60 second demo](video/pair-programmer.mp4)**
 
 **Try it: `node pair-programmer.ts open`**, then on another machine
 `node pair-programmer.ts join <code>`
