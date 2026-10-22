@@ -107,7 +107,7 @@ config and you are done:
 ```
 
 Node 22.18 or newer. TypeScript runs natively, so there is no build step, no
-`npm install`, and no dependencies at all. One source file, 192 lines.
+`npm install`, and no dependencies at all. One source file, 193 lines.
 
 ## What the agent gets
 

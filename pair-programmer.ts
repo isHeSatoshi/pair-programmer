@@ -178,7 +178,8 @@ const cli = async (argv: string[]) => {
     const address = (all.find(e => e.address.startsWith('192.168.') || e.address.startsWith('10.')) || all[0])?.address || '127.0.0.1';
     const code = joinCode(address, PORT); writeConfig({ port: PORT, hub: null });
     console.log(`the office is open  ${address}:${PORT}\n  join code   ${code}\n  teammates run  node pair-programmer.ts join ${code}`);
-    await serve(PORT, createBoard());
+    try { await serve(PORT, createBoard()); }
+    catch (error) { console.error(`could not open the office on port ${PORT}: ${(error as Error).message}`); return 1; }
   } else if (command === 'join') {
     let address: string, port: number;
     try { [address, port] = readJoinCode(rest[0] || ''); } catch (error) { console.error(String((error as Error).message)); return 1; }
@@ -194,10 +195,10 @@ const cli = async (argv: string[]) => {
     console.log('work in flight:');
     for (const c of board.claims.filter(c => c.state === 'claimed')) console.log(`  ${c.owner}: ${c.title}`);
   } else if (command === 'claim') {
-    const reply = await call(base, 'claim', { ...me, task: rest.join(' ') });
+    const reply = await call(base, 'claim', { ...me, task: rest.join(' ').replace(/^"|"$/g, '') });
     console.log(reply.ok ? (reply.status === 'conflict' ? `conflict  ${reply.message}` : `claimed  ${reply.task_key}`) : reply.error);
   } else if (command === 'delegate') {
-    const to = rest[rest.length - 1] || '', task = rest.slice(0, -1).join(' ');
+    const to = rest[rest.length - 1] || '', task = rest.slice(0, -1).join(' ').replace(/^"|"$/g, '');
     const reply = await call(base, 'delegate', { ...me, task, to, brief: '' });
     console.log(reply.ok ? `handed to ${reply.delegated_to.owner}  ${reply.task_key}` : reply.error);
   } else if (command === 'install') {
