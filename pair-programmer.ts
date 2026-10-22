@@ -19,8 +19,8 @@ const filesOf = (items: string[] = []) => [...new Set((items || []).map(x => Str
 // Turn an address into a 12 character code somebody can type.
 export const joinCode = (host: string, port = PORT) => {
   const raw = [...Buffer.from(host.split('.').map(Number)), port >> 8, port & 255];
-  const bits = [...raw, raw.reduce((a, b) => (a + b) & 255, 0)].map(x => x.toString(2).padStart(8, '0')).join('');
-  let out = ''; for (let i = 0; i < 12; i++) out += ALPHABET[parseInt(bits.slice(i * 5, i * 5 + 5).padEnd(5, '0'), 2)];
+  const bits = [...raw, raw.reduce((a, b) => (a + b) & 255, 0)].map(x => x.toString(2).padStart(8, '0')).join(''); let out = '';
+  for (let i = 0; i < 12; i++) out += ALPHABET[parseInt(bits.slice(i * 5, i * 5 + 5).padEnd(5, '0'), 2)];
   return out.match(/.{1,4}/g)!.join('-');
 };
 
@@ -39,8 +39,7 @@ const TICKET = /^\s*(#\w+|[A-Za-z][A-Za-z0-9]{0,15}[-_][A-Za-z0-9]+)/;
 
 // The identity of a piece of work. A ticket id wins over the wording.
 export const taskKey = (title: string) => {
-  const m = TICKET.exec(title || '');
-  const flat = (m ? 'ticket:' + m[1] : 'title:' + (title || '')).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const m = TICKET.exec(title || ''), flat = (m ? 'ticket:' + m[1] : 'title:' + (title || '')).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   return createHash('sha256').update(flat).digest('hex').slice(0, 12); };
 
 // Everything the office knows. Only the host keeps one.
@@ -49,8 +48,7 @@ export const createBoard = () => {
 
   // A desk shows up by itself the first time it calls.
   const sit = (f: Bag) => {
-    if (f.session_id && !sessions.has(f.session_id)) sessions.set(f.session_id, { session_id: f.session_id, owner: f.owner || 'someone', harness: f.harness || 'unknown' });
-  };
+    if (f.session_id && !sessions.has(f.session_id)) sessions.set(f.session_id, { session_id: f.session_id, owner: f.owner || 'someone', harness: f.harness || 'unknown' }); };
 
   const claim = (f: Bag) => {
     const title = (f.task || '').trim();
@@ -132,8 +130,7 @@ const call = async (base: string, action: string, fields: Bag = {}): Promise<Bag
 const readConfig = (): Bag => { try { return JSON.parse(readFileSync(CONFIG, 'utf8').replace(/^﻿/, '')); } catch { return {}; } };
 
 const writeConfig = (u: Bag) => {
-  mkdirSync(HOME, { recursive: true });
-  const d = { ...readConfig(), ...u }; writeFileSync(CONFIG, JSON.stringify(d, null, 2) + '\n'); return d; };
+  mkdirSync(HOME, { recursive: true }); const d = { ...readConfig(), ...u }; writeFileSync(CONFIG, JSON.stringify(d, null, 2) + '\n'); return d; };
 
 // name: [office action, description, {argument: type or fixed value}], "?" marks an optional one
 const TOOLS: Record<string, [string, string, Bag]> = {
@@ -151,8 +148,7 @@ const TYPES: Bag = { s: { type: 'string' }, a: { type: 'array', items: { type: '
 const toolList = () => Object.entries(TOOLS).map(([name, [action, description, props]]) => ({
   name, description, inputSchema: { type: 'object', properties: Object.fromEntries(Object.entries(props).map(([k, v]) => [k, TYPES[v[0]] || { enum: [v] }])), required: Object.keys(props).filter(k => !props[k].endsWith('?')) }, }));
 
-const identity = (): Bag => { const s = readConfig();
-  return { session_id: process.env.PAIRPROGRAMMER_SESSION_ID || id(), owner: process.env.PAIRPROGRAMMER_OWNER || s.name || hostname(), harness: process.env.PAIRPROGRAMMER_HARNESS || s.harness || 'unknown' }; };
+const identity = (): Bag => { const s = readConfig(); return { session_id: process.env.PAIRPROGRAMMER_SESSION_ID || id(), owner: process.env.PAIRPROGRAMMER_OWNER || s.name || hostname(), harness: process.env.PAIRPROGRAMMER_HARNESS || s.harness || 'unknown' }; };
 
 const serveMcp = async () => {
   const base = readConfig().hub || `http://127.0.0.1:${PORT}`, me = identity();
@@ -165,31 +161,17 @@ const serveMcp = async () => {
     else if (method === 'tools/list') result = { tools: toolList() };
     else if (method === 'tools/call') {
       const [action, , props] = TOOLS[params.name] || [], fields: Bag = { ...me };
-      for (const [k, t] of Object.entries(props || {})) fields[k] = t[0] in TYPES ? params.arguments?.[k] ?? (t[0] === 'a' ? [] : '') : t;
-      const outcome = action ? await call(base, action, fields) : { ok: false, error: 'no such tool' };
+      for (const [k, t] of Object.entries(props || {})) fields[k] = t[0] in TYPES ? params.arguments?.[k] ?? (t[0] === 'a' ? [] : '') : t;      const outcome = action ? await call(base, action, fields) : { ok: false, error: 'no such tool' };
       result = { content: [{ type: 'text', text: JSON.stringify(outcome) }], isError: !outcome.ok };
     } else result = { error: { code: -32601, message: method } };
     process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: requestId, result }) + '\n');
   }
 };
 
-const demo = () => {
-  const b = createBoard();
-  const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
-  b.sit(alice); b.sit(bob);
-  const title = 'TICKET-42 add auth middleware';
-  console.log('alice claims ', b.actions.claim({ ...alice, task: title, files: ['src/auth.py'] }).status);
-  const clash = b.actions.claim({ ...bob, task: title, files: ['src/auth.py'] });
-  console.log('bob claims   ', clash.status, clash.message);
-  b.actions.delegate({ ...bob, task: 'TICKET-51 rate limit', to: 'alice', brief: '429 with Retry-After' });
-  const inbox = b.actions.take({ ...alice });
-  console.log('alice picks up', inbox.tasks[0].title);
-  b.actions.report({ ...alice, task_key: inbox.tasks[0].task_key, state: 'done', result: 'token bucket per key' });
-  console.log('bob reads   ', b.actions.result({ task_key: inbox.tasks[0].task_key }).result.result);
-};
-
 const cli = async (argv: string[]) => {
   const [command, ...rest] = argv;
+  const base = readConfig().hub || `http://127.0.0.1:${PORT}`;
+  const me = { session_id: id(), owner: process.env.PAIRPROGRAMMER_OWNER || readConfig().name || hostname() };
   if (command === 'open') {
     // Virtual adapters (Docker, WSL) answer first, so prefer a plain LAN range.
     const all = Object.values(networkInterfaces()).flatMap(l => l || []).filter(e => e.family === 'IPv4' && !e.internal);
@@ -199,20 +181,31 @@ const cli = async (argv: string[]) => {
     await serve(PORT, createBoard());
   } else if (command === 'join') {
     let address: string, port: number;
-    try { [address, port] = readJoinCode(rest[0] || ''); }
-    catch (error) { console.error(String((error as Error).message)); return 1; }
-    const base = `http://${address}:${port}`;
-    const reply = await call(base, 'status', { session_id: id(), owner: hostname() });
+    try { [address, port] = readJoinCode(rest[0] || ''); } catch (error) { console.error(String((error as Error).message)); return 1; }
+    const reply = await call(`http://${address}:${port}`, 'status', me);
     if (!reply.ok) { console.error(`could not join: ${reply.error}`); return 1; }
-    writeConfig({ hub: base, port });
-    console.log(`you are in  the office is at ${base}`);
+    writeConfig({ hub: `http://${address}:${port}`, port });
+    console.log(`you are in  the office is at http://${address}:${port}`);
+  } else if (command === 'status') {
+    const board = await call(base, 'status', me);
+    if (!board.ok) { console.error(board.error); return 1; }
+    console.log('in the office:');
+    for (const owner of [...new Set(board.sessions.map(s => s.owner))]) console.log(`  ${owner}`);
+    console.log('work in flight:');
+    for (const c of board.claims.filter(c => c.state === 'claimed')) console.log(`  ${c.owner}: ${c.title}`);
+  } else if (command === 'claim') {
+    const reply = await call(base, 'claim', { ...me, task: rest.join(' ') });
+    console.log(reply.ok ? (reply.status === 'conflict' ? `conflict  ${reply.message}` : `claimed  ${reply.task_key}`) : reply.error);
+  } else if (command === 'delegate') {
+    const to = rest[rest.length - 1] || '', task = rest.slice(0, -1).join(' ');
+    const reply = await call(base, 'delegate', { ...me, task, to, brief: '' });
+    console.log(reply.ok ? `handed to ${reply.delegated_to.owner}  ${reply.task_key}` : reply.error);
   } else if (command === 'install') {
     const target = join(homedir(), '.minimax', 'plugins', 'pair-programmer');
     for (const item of ['.minimax-plugin', 'icon.png', 'icon-dark.png', 'pair-programmer.mcp.json', 'skills', 'pair-programmer.ts'])
       cpSync(join(import.meta.dirname, item), join(target, item), { recursive: true });
     console.log(`installed the plugin into ${target}`);
-  } else if (command === 'demo') demo();
-  else console.log('pair-programmer\n  open      open the office and print the join code\n  join <code>   join somebody else\'s office\n  install   install the plugin\n  demo      watch two agents avoid doing the same work');
+  } else console.log('pair-programmer\n  open      open the office and print the join code\n  join <code>   join somebody else\'s office\n  status     who is in the office\n  claim <work>    claim a piece of work\n  delegate <work> <who>   hand work over\n  install   install the plugin');
   return 0;
 };
 

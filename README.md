@@ -4,7 +4,10 @@
 
 _Local first. No account, no server, no bill. The connection between desks is the LAN._
 
-**Try it: `node pair-programmer.ts demo`** (two desks, one ticket, no duplicated work, about a second)
+**[Watch the 60 second demo](video/pair-programmer.mp4)**
+
+**Try it: `node pair-programmer.ts open`**, then on another machine
+`node pair-programmer.ts join <code>`
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -104,7 +107,7 @@ config and you are done:
 ```
 
 Node 22.18 or newer. TypeScript runs natively, so there is no build step, no
-`npm install`, and no dependencies at all. One source file, 198 lines.
+`npm install`, and no dependencies at all. One source file, 192 lines.
 
 ## What the agent gets
 
@@ -124,15 +127,15 @@ claim before it edits, and stop when a claim comes back as a conflict.
 ## Run it yourself
 
 ```bash
-node pair-programmer.ts demo     # two desks, one ticket, about a second
-node pair-programmer.ts open     # host the office, print the join code
-node pair-programmer.ts join ABCD-EFGH-JKLM
-node --test                      # 7 tests
+node pair-programmer.ts open                # host the office, print the join code
+node pair-programmer.ts join ABCD-EFGH-JKLM # a teammate joins from another machine
+node pair-programmer.ts status              # who is in the office, what is taken
+node pair-programmer.ts claim "TICKET-42 add auth middleware"
+node --test                               # 7 tests
 ```
 
-The demo shows two agents get the same ticket, the first one to claim keeps it,
-the second one gets told who holds it, and then a third task gets handed over
-instead of duplicated.
+Two agents get the same ticket, the first one to claim keeps it, the second one
+gets told who holds it, and a third task gets handed over instead of duplicated.
 
 ## Limits
 
