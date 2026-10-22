@@ -211,7 +211,9 @@ const cli = async (argv: string[]) => {
   } else if (command === 'config') {
     // No vendor directory and no vendor manifest: the server speaks MCP over stdio,
     // so every harness wires it up the same way, by pointing at this file.
-    const self = join(import.meta.dirname, 'pair-programmer.ts');
+    // Forward slashes, because a Windows path with backslashes is unusable in a
+    // bash shell and node reads forward slashes on every platform.
+    const self = join(import.meta.dirname, 'pair-programmer.ts').replace(/\\/g, '/');
     mkdirSync(HOME, { recursive: true });
     writeFileSync(join(HOME, 'mcp.json'), JSON.stringify({ mcpServers: { 'pair-programmer': { command: 'node', args: [self, 'mcp'] } } }, null, 2) + '\n');
     console.log(`the office speaks MCP over stdio, so any harness can run it:\n  server  node ${self} mcp\n\n  claude code  claude mcp add pair-programmer -- node ${self} mcp\n  codex        [mcp_servers.pair-programmer]  command = "node"  args = ["${self}", "mcp"]\n  anything else  point its MCP config at the server command above\n\n  a copy of the json is in ${join(HOME, 'mcp.json')}`);

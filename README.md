@@ -2,53 +2,35 @@
 
 **One shared office for every teammate's agent. They stop doing the same job, and they hand work to whoever is free.**
 
-_Local first. No account, no cloud, no bill. One of you runs the office and everybody else joins over the LAN._
+**One file, 189 lines of code. No dependencies, no build step, no `npm install`.**
+
+Local first. No account, no cloud, no bill. One of you runs the office and everybody else joins over the LAN.
 
 ![Two agents claim the same ticket, one gets told to stop, and the other picks up a task that was handed to it](video/demo.gif)
 
 **[Watch the full 60 second demo](video/pair-programmer.mp4)**
 
-**Try it: `node pair-programmer.ts open`**, then on another machine
-`node pair-programmer.ts join <code>`
-
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  WITHOUT PAIR PROGRAMMER                                     │
-├──────────────────────────────────────────────────────────────┤
-│  alice's agent    ████████████████████  add auth middleware  │
-│  bob's agent      ████████████████████  add auth middleware  │
-│  chandra's agent  ████████████████████  add auth middleware  │
-│  dee's agent      ████████████████████  add auth middleware  │
-│                                                              │
-│  4 agents. 1 useful PR. 4x the tokens.                       │
-└──────────────────────────────────────────────────────────────┘
+WITHOUT                          WITH PAIR PROGRAMMER
+alice    ██████ add auth         alice    ██████ add auth middleware
+bob      ██████ add auth         bob      ▓▓▓▓▓▓ write the rate limit
+chandra  ██████ add auth         chandra  ▓▓▓▓▓▓ fix the flaky test
+dee      ██████ add auth         dee      ▓▓▓▓▓▓ write the README
 
-┌──────────────────────────────────────────────────────────────┐
-│  WITH PAIR PROGRAMMER                                        │
-├──────────────────────────────────────────────────────────────┤
-│  alice's agent    ████████████████████  add auth middleware  │
-│  bob's agent      ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  write the rate limit  │
-│  chandra's agent  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  fix the flaky test    │
-│  dee's agent      ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  write the README      │
-│                                                              │
-│  4 agents. 4 useful PRs. The tokens go into work that ships. │
-└──────────────────────────────────────────────────────────────┘
+4 agents, 1 useful PR            4 agents, 4 useful PRs
 ```
 
 A team on one repo: five developers, five agents, five coding harnesses. Every
-brief lands in every agent at the same time, so every agent starts the same
-task. Nobody is idle and everybody is duplicating.
+brief lands in every agent at once, so every agent starts the same task. Pair
+Programmer gives each session a desk in a shared office, so an agent claims work
+before it starts, hands work to a teammate when that fits better, and reports
+back when it is done.
 
-Pair Programmer gives each harness session a desk in a shared office. A desk
-knows which work is taken and who is free, so an agent claims a task before it
-starts, hands a task to a teammate's agent when that is the better fit, and
-reports back when it is done. The team moves at the speed of the team instead
-of the speed of one agent.
-
-## Connecting is one code
+## Quick start
 
 One person opens the office and reads out a 12 character code. Everybody else
-types it. That is the whole setup, the same way joining a meeting works.
+types it. The code carries the host's address, so there is no cloud service and
+nothing to sign up for.
 
 ```
 alice$ node pair-programmer.ts open
@@ -61,39 +43,32 @@ bob$ node pair-programmer.ts join R2M0-2AGX-1PYG
 you are in  the office is at http://192.168.1.42:7437
 ```
 
-The code carries the address of the host, so there is no cloud service in the
-middle and nothing to sign up for. The alphabet has no I, L, O or U in it, so
-nobody has to guess whether a character is a one or an O.
-
-## How it works
-
-```mermaid
-flowchart LR
-    H["host<br/>the office"] --- G1["bob's desk<br/>any harness"]
-    H --- G2["chandra's desk<br/>any harness"]
-    H --- G3["dee's desk<br/>any harness"]
-```
-
-- **One machine hosts the board.** Everyone else points at it. The board holds
-  the claims, the handovers and the results, and the host is the only one that
-  has to stay switched on.
-- **A claim is the unit of coordination.** The task title decides the identity
-  of the work. Put a ticket id at the front, `TICKET-42 add auth middleware`,
-  and two agents that worded the ticket differently still land on the same
-  key. The first claim wins and the other one is told who holds it.
-- **A delegation is a handoff.** An agent hands a task to a teammate's session
-  with a brief. The other agent picks it up on its next turn and reports the
-  result back.
-
 ## Install
 
-There is no plugin to install and no bundle to unpack. The office is an MCP
-server over stdio, so every harness wires it up the same way: point it at the
-one file.
+The office is an MCP server over stdio, so there is no plugin to install and no
+bundle to unpack. Every harness points at the one file.
+
+**Let your agent do it.** Paste this into the agent already open in your repo:
+
+```
+Set up Pair Programmer in this repo for me.
+
+1. Clone https://github.com/isHeSatoshi/pair-programmer somewhere and note the
+   absolute path to pair-programmer.ts.
+2. Register it as an MCP server with my harness, named "pair-programmer",
+   running:  node <absolute path>/pair-programmer.ts mcp
+   Use whatever config format my harness reads.
+3. Copy skills/pair-programmer/SKILL.md wherever my harness keeps skills, or
+   into AGENTS.md if it reads that.
+4. Run `node pair-programmer.ts config` and show me the output.
+5. Tell me the command I run to host the office, and what my teammates run.
+```
+
+**Or by hand:**
 
 ```bash
 git clone https://github.com/isHeSatoshi/pair-programmer && cd pair-programmer
-node pair-programmer.ts config   # prints this config filled in for your machine
+node pair-programmer.ts config   # prints this, filled in for your machine
 ```
 
 ```json
@@ -101,36 +76,34 @@ node pair-programmer.ts config   # prints this config filled in for your machine
   "mcpServers": {
     "pair-programmer": {
       "command": "node",
-      "args": ["/path/to/pair-programmer/pair-programmer.ts", "mcp"]
+      "args": ["/absolute/path/to/pair-programmer.ts", "mcp"]
     }
   }
 }
 ```
 
-Claude Code (`claude mcp add pair-programmer -- node .../pair-programmer.ts mcp`),
-Codex, Cursor, Zed and anything else that speaks MCP take a config of that
-shape. There is no vendor directory, no plugin manifest and no harness-specific
-code. A harness can report its own name through `PAIRPROGRAMMER_HARNESS` if it
-wants to, but the office works the same without it.
+Claude Code is one command:
+`claude mcp add pair-programmer -- node /absolute/path/to/pair-programmer.ts mcp`
+Codex, Cursor, Zed and the rest take a config of the same shape.
 
-### Teaching the agent when to use it
+**Then teach it when to use the tools.** MCP gives the agent the tools, not the
+judgement to reach for them, and an agent that never calls `pair_claim` saves
+you nothing. Copy `skills/pair-programmer/SKILL.md` into your harness's skills
+directory, or paste it into `AGENTS.md`.
 
-MCP gives the agent the tools. It does not tell the agent *when* to reach for
-them, and an agent that never calls `pair_claim` saves you nothing. That part is
-a short instruction file, and it is plain markdown:
+Node 22.18 or newer. TypeScript runs natively.
 
-- **Claude Code and harnesses with skills**: `skills/pair-programmer/SKILL.md`
-- **Anything that reads `AGENTS.md`**: paste that same file's body into your
-  `AGENTS.md`, or copy it to `.pair-programmer.md` and reference it
+## How it works
 
-The instructions are the same either way: check for handed-over work at the
-start of a turn, claim before you edit, and stop when a claim comes back as a
-conflict.
-
-Node 22.18 or newer. TypeScript runs natively, so there is no build step, no
-`npm install`, and no dependencies at all. One source file, 189 lines of code.
-
-## What the agent gets
+- **One machine hosts the board.** Everyone else points at it. It holds the
+  claims, the handovers and the results, and it is the only machine that has to
+  stay switched on.
+- **A claim is the unit of coordination.** The task title is the identity of the
+  work. Put a ticket id at the front, `TICKET-42 add auth middleware`, and two
+  agents that worded it differently still land on the same key. First claim
+  wins, and the other agent is told who holds it.
+- **A delegation is a handoff.** An agent hands a task to a teammate's session
+  with a brief. The teammate picks it up on its next turn and reports back.
 
 | Tool | What it does |
 | --- | --- |
@@ -141,9 +114,6 @@ Node 22.18 or newer. TypeScript runs natively, so there is no build step, no
 | `pair_next_task` | Pick up work another agent handed over |
 | `pair_report` | Say it is done, or say it is blocked |
 | `pair_result` | Read what came back from work you handed over |
-
-The skill tells the agent to check for handed-over work at the start of a turn,
-claim before it edits, and stop when a claim comes back as a conflict.
 
 ## Run it yourself
 
@@ -157,30 +127,27 @@ node pair-programmer.ts report <task_key> "token bucket, 60 a minute" done
 node --test                                 # 9 tests
 ```
 
-Two agents get the same ticket, the first one to claim keeps it, the second one
-gets told who holds it, and a third task gets handed over instead of duplicated.
 The CLI runs the whole loop, so you can try it before you wire up a harness.
 
 ## Limits
 
-- **The host has to stay on.** If the machine hosting the board sleeps, the
-  board goes with it. Everybody else keeps working on their own code.
+- **The host has to stay on.** If that machine sleeps, the board goes with it.
+  Your code is safe, the claims are gone.
 - **It is advisory.** The office will not stop an agent from editing a file. It
-  tells the agent that somebody else is already there, which is usually enough.
-- **A claim covers a task, and a file overlap is a warning.** Two different
-  tickets that touch the same file get flagged, not blocked, and the merge is
-  still on you.
-- **Without a shared ticket id, only identical wording matches.** The office can
-  only tell two tasks apart by the title it was given. Put the ticket id in.
+  says somebody else is already there, which is usually enough.
+- **A file overlap is a warning, not a block.** Two tickets touching the same
+  file get flagged, and the merge is still on you.
+- **No shared ticket id means only identical wording matches.** Put the id in.
 - **No authentication.** Anyone who can reach the host can read the board and
-  make claims. Fine for an office, wrong for a shared network.
-- **IPv4 on a LAN.** The join code carries an IPv4 address, and a machine that
-  blocks UDP broadcast on that segment will not be reachable by code alone.
+  claim work. Fine for an office, wrong for a shared network.
+- **IPv4 on a LAN.** The code carries an IPv4 address.
 
 ## Built with
 
-Node 22 and nothing else. No dependencies, no database, no cloud service. The
-board lives in memory on the machine that ran `open`, and every other desk
-talks to it over HTTP.
+Node 22 and nothing else. One file, 189 lines of code, zero dependencies, no
+build step, no database, no cloud service. The board lives in memory on the
+machine that ran `open`, and every other desk talks to it over HTTP. That is the
+point of the size: you can read the whole thing in one sitting, and nothing in it
+can break because a package changed under you.
 
 MIT licensed. Pair it with your team, tell me what breaks.
