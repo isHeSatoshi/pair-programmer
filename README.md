@@ -2,7 +2,7 @@
 
 **One shared office for every teammate's agent. They stop doing the same job, and they hand work to whoever is free.**
 
-_Local first. No account, no server, no bill. The connection between desks is the LAN._
+_Local first. No account, no cloud, no bill. One of you runs the office and everybody else joins over the LAN._
 
 **[Watch the 60 second demo](video/pair-programmer.mp4)**
 
@@ -52,16 +52,16 @@ types it. That is the whole setup, the same way joining a meeting works.
 alice$ node pair-programmer.ts open
 
   the office is open  192.168.1.42:7437
-  join code   FW00-00F9-4X70
-  teammates run  node pair-programmer.ts join FW00-00F9-4X70
+  join code   R2M0-2AGX-1PYG
+  teammates run  node pair-programmer.ts join R2M0-2AGX-1PYG
 
-bob$ node pair-programmer.ts join FW00-00F9-4X70
+bob$ node pair-programmer.ts join R2M0-2AGX-1PYG
 you are in  the office is at http://192.168.1.42:7437
 ```
 
-The code carries the address of the host, so there is no server in the middle
-and nothing to sign up for. The alphabet has no I, L, O or U in it, so nobody
-has to guess whether a character is a one or an O.
+The code carries the address of the host, so there is no cloud service in the
+middle and nothing to sign up for. The alphabet has no I, L, O or U in it, so
+nobody has to guess whether a character is a one or an O.
 
 ## How it works
 
@@ -107,7 +107,7 @@ config and you are done:
 ```
 
 Node 22.18 or newer. TypeScript runs natively, so there is no build step, no
-`npm install`, and no dependencies at all. One source file, 193 lines.
+`npm install`, and no dependencies at all. One source file, 189 lines of code.
 
 ## What the agent gets
 
@@ -131,11 +131,14 @@ node pair-programmer.ts open                # host the office, print the join co
 node pair-programmer.ts join ABCD-EFGH-JKLM # a teammate joins from another machine
 node pair-programmer.ts status              # who is in the office, what is taken
 node pair-programmer.ts claim "TICKET-42 add auth middleware"
-node --test                               # 7 tests
+node pair-programmer.ts next                # pick up work a teammate handed you
+node pair-programmer.ts report <task_key> "token bucket, 60 a minute" done
+node --test                                 # 9 tests
 ```
 
 Two agents get the same ticket, the first one to claim keeps it, the second one
 gets told who holds it, and a third task gets handed over instead of duplicated.
+The CLI runs the whole loop, so you can try it before you wire up a harness.
 
 ## Limits
 
@@ -155,7 +158,8 @@ gets told who holds it, and a third task gets handed over instead of duplicated.
 
 ## Built with
 
-Node 22 and nothing else. No dependencies, no database, no server. The board
-lives in memory on the host and the desks talk to it over HTTP.
+Node 22 and nothing else. No dependencies, no database, no cloud service. The
+board lives in memory on the machine that ran `open`, and every other desk
+talks to it over HTTP.
 
 MIT licensed. Build it for your hackathon, tell me what breaks.

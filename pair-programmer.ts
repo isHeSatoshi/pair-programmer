@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Pair Programmer: a shared office where teammate agents coordinate instead of duplicating work.
-// One host, everybody joins with a 12 character code. node pair-programmer.ts open | join CODE | mcp
+// Pair Programmer: a shared office where teammate agents coordinate instead of duplicating work. One host, everybody joins with a 12 character code: open | join CODE | mcp
 import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -171,7 +170,8 @@ const serveMcp = async () => {
 const cli = async (argv: string[]) => {
   const [command, ...rest] = argv;
   const base = readConfig().hub || `http://127.0.0.1:${PORT}`;
-  const me = { session_id: id(), owner: process.env.PAIRPROGRAMMER_OWNER || readConfig().name || hostname() };
+  const who = process.env.PAIRPROGRAMMER_OWNER || readConfig().name || hostname();
+  const me = { session_id: process.env.PAIRPROGRAMMER_SESSION_ID || createHash('sha256').update('desk:' + who).digest('hex').slice(0, 16), owner: who };
   if (command === 'open') {
     // Virtual adapters (Docker, WSL) answer first, so prefer a plain LAN range.
     const all = Object.values(networkInterfaces()).flatMap(l => l || []).filter(e => e.family === 'IPv4' && !e.internal);
@@ -201,12 +201,19 @@ const cli = async (argv: string[]) => {
     const to = rest[rest.length - 1] || '', task = rest.slice(0, -1).join(' ').replace(/^"|"$/g, '');
     const reply = await call(base, 'delegate', { ...me, task, to, brief: '' });
     console.log(reply.ok ? `handed to ${reply.delegated_to.owner}  ${reply.task_key}` : reply.error);
+  } else if (command === 'next') {
+    const reply = await call(base, 'take', me);
+    console.log(reply.ok ? reply.tasks.map((t: Bag) => `picked up  ${t.title}  ${t.task_key}`).join('\n') || 'nothing has been handed to you' : reply.error);
+  } else if (command === 'report') {
+    const state = ['done', 'failed', 'released'].includes(rest[rest.length - 1]) ? rest.pop() : 'done';
+    const reply = await call(base, 'report', { ...me, task_key: rest[0], state, result: rest.slice(1).join(' ') });
+    console.log(reply.ok ? `reported  ${reply.state}  ${reply.task_key}` : reply.error);
   } else if (command === 'install') {
     const target = join(homedir(), '.minimax', 'plugins', 'pair-programmer');
     for (const item of ['.minimax-plugin', 'icon.png', 'icon-dark.png', 'pair-programmer.mcp.json', 'skills', 'pair-programmer.ts'])
       cpSync(join(import.meta.dirname, item), join(target, item), { recursive: true });
     console.log(`installed the plugin into ${target}`);
-  } else console.log('pair-programmer\n  open      open the office and print the join code\n  join <code>   join somebody else\'s office\n  status     who is in the office\n  claim <work>    claim a piece of work\n  delegate <work> <who>   hand work over\n  install   install the plugin');
+  } else console.log('pair-programmer\n  open      open the office and print the join code\n  join <code>   join somebody else\'s office\n  status     who is in the office\n  claim <work>    claim a piece of work\n  next      pick up work a teammate handed you\n  report <key> [result] [done|failed|released]   say how it went\n  delegate <work> <who>   hand work over\n  install   install the plugin');
   return 0;
 };
 

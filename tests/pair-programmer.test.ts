@@ -84,6 +84,45 @@ test('the demo: two agents, one ticket, no duplicated work', () => {
   console.log('alice picks up', b.actions.take({ ...alice }).tasks[0].title);
 });
 
+test('the join code printed in the README is a real code', () => {
+  assert.deepEqual(readJoinCode('R2M0-2AGX-1PYG'), ['192.168.1.42', 7437]);
+  assert.equal(joinCode('192.168.1.42', 7437), 'R2M0-2AGX-1PYG');
+});
+
+test('the CLI runs the whole loop: claim, conflict, delegate, pick up, report', async () => {
+  const port = await freePort();
+  const server = await serve(port, createBoard());
+  const home = mkdtempSync(join(tmpdir(), 'pair-programmer-cli-'));
+  writeFileSync(join(home, 'office.json'), JSON.stringify({ hub: `http://127.0.0.1:${port}` }));
+
+  const run = (who: string, ...args: string[]) => new Promise<string>(resolve => {
+    const child = spawn(process.execPath, [join(ROOT, 'pair-programmer.ts'), ...args], {
+      env: { ...process.env, PAIRPROGRAMMER_HOME: home, PAIRPROGRAMMER_OWNER: who },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    child.stdout.on('data', (chunk: Buffer) => (out += chunk));
+    child.stderr.on('data', (chunk: Buffer) => (out += chunk));
+    child.on('exit', () => resolve(out.trim()));
+  });
+
+  try {
+    assert.match(await run('alice', 'claim', 'TICKET-42 add auth middleware'), /^claimed\s+\w+/);
+    assert.match(await run('bob', 'claim', 'TICKET-42 add auth middleware'), /^conflict\s+alice already claimed/);
+    assert.match(await run('alice', 'delegate', 'TICKET-51 write the rate limit middleware', 'bob'),
+      /^handed to bob/);
+    const picked = await run('bob', 'next');
+    assert.match(picked, /^picked up\s+TICKET-51 write the rate limit middleware/);
+    assert.match(await run('bob', 'report', picked.split(/\s+/).pop()!, 'token bucket', 'done'),
+      /^reported\s+done/);
+    const board = await run('bob', 'status');
+    assert.match(board, /alice/);
+    assert.match(board, /TICKET-42 add auth middleware/);
+  } finally {
+    server.close();
+  }
+});
+
 test('the MCP server answers initialize, lists the tools and runs them', async () => {
   const port = await freePort();
   const server = await serve(port, createBoard());

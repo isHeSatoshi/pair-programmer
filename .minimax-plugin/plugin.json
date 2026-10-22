@@ -3,7 +3,7 @@
   "name": "pair-programmer",
   "displayName": "Pair Programmer",
   "version": "1.0.0",
-  "description": "A shared office for teammate agents. See who is working on what, stop two agents doing the same job, and hand work to whoever is free. Runs on the local network, no server and no account.",
+  "description": "A shared office for teammate agents. See who is working on what, stop two agents doing the same job, and hand work to whoever is free. Runs on your own network, no cloud service and no account.",
   "author": "isHeSatoshi",
   "icon": "icon.png",
   "darkIcon": "icon-dark.png",
