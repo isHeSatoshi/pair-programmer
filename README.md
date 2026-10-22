@@ -2,7 +2,7 @@
 
 **One shared office for every teammate's agent. They stop doing the same job, and they hand work to whoever is free.**
 
-**One file, 189 lines of code. No dependencies, no build step, no `npm install`.**
+**One file, under 200 LOC. No dependencies, no build step, no `npm install`.**
 
 Local first. No account, no cloud, no bill. One of you runs the office and everybody else joins over the LAN.
 
@@ -45,53 +45,55 @@ you are in  the office is at http://192.168.1.42:7437
 
 ## Install
 
-The office is an MCP server over stdio, so there is no plugin to install and no
-bundle to unpack. Every harness points at the one file.
-
-**Let your agent do it.** Paste this into the agent already open in your repo:
-
-```
-Set up Pair Programmer in this repo for me.
-
-1. Clone https://github.com/isHeSatoshi/pair-programmer somewhere and note the
-   absolute path to pair-programmer.ts.
-2. Register it as an MCP server with my harness, named "pair-programmer",
-   running:  node <absolute path>/pair-programmer.ts mcp
-   Use whatever config format my harness reads.
-3. Copy skills/pair-programmer/SKILL.md wherever my harness keeps skills, or
-   into AGENTS.md if it reads that.
-4. Run `node pair-programmer.ts config` and show me the output.
-5. Tell me the command I run to host the office, and what my teammates run.
-```
-
-**Or by hand:**
+Two files. No clone, no package manager, nothing to build.
 
 ```bash
-git clone https://github.com/isHeSatoshi/pair-programmer && cd pair-programmer
-node pair-programmer.ts config   # prints this, filled in for your machine
+mkdir -p ~/.pair-programmer
+curl -fsSL -o ~/.pair-programmer/pair-programmer.ts https://raw.githubusercontent.com/isHeSatoshi/pair-programmer/main/pair-programmer.ts
+curl -fsSL -o ~/.pair-programmer/SKILL.md https://raw.githubusercontent.com/isHeSatoshi/pair-programmer/main/skills/pair-programmer/SKILL.md
 ```
+
+The first file is the product. It is an MCP server over stdio with no
+dependencies, so it is the only thing your harness needs. The second is the
+instruction file that tells your agent *when* to reach for the tools, which MCP
+by itself does not say. The video and the tests in the repo are for reading, not
+for installing.
+
+**Let your agent do it.** Paste this into the harness you already have open:
+
+```
+Set up Pair Programmer for me.
+
+1. Download these two files into ~/.pair-programmer/, creating the directory.
+   Nothing else is needed. Do not clone the repository.
+     https://raw.githubusercontent.com/isHeSatoshi/pair-programmer/main/pair-programmer.ts
+     https://raw.githubusercontent.com/isHeSatoshi/pair-programmer/main/skills/pair-programmer/SKILL.md
+2. Register ~/.pair-programmer/pair-programmer.ts as an MCP server named
+   "pair-programmer", running:  node <absolute path to it> mcp
+   Use whatever config format my harness reads.
+3. Put SKILL.md where my harness keeps skills, or paste it into AGENTS.md.
+4. Run `node <absolute path> config` and show me the output.
+5. Tell me the command I host the office with, and what my teammates run.
+```
+
+What it should end up writing, and the same shape in every harness:
 
 ```json
 {
   "mcpServers": {
     "pair-programmer": {
       "command": "node",
-      "args": ["/absolute/path/to/pair-programmer.ts", "mcp"]
+      "args": ["/home/you/.pair-programmer/pair-programmer.ts", "mcp"]
     }
   }
 }
 ```
 
 Claude Code is one command:
-`claude mcp add pair-programmer -- node /absolute/path/to/pair-programmer.ts mcp`
+`claude mcp add pair-programmer -- node ~/.pair-programmer/pair-programmer.ts mcp`
 Codex, Cursor, Zed and the rest take a config of the same shape.
 
-**Then teach it when to use the tools.** MCP gives the agent the tools, not the
-judgement to reach for them, and an agent that never calls `pair_claim` saves
-you nothing. Copy `skills/pair-programmer/SKILL.md` into your harness's skills
-directory, or paste it into `AGENTS.md`.
-
-Node 22.18 or newer. TypeScript runs natively.
+Node 22.18 or newer. TypeScript runs natively, so there is nothing to build.
 
 ## How it works
 
@@ -117,6 +119,8 @@ Node 22.18 or newer. TypeScript runs natively.
 
 ## Run it yourself
 
+From wherever you put `pair-programmer.ts`:
+
 ```bash
 node pair-programmer.ts open                # host the office, print the join code
 node pair-programmer.ts join R2M0-2AGX-1PYG # a teammate joins from another machine
@@ -124,10 +128,10 @@ node pair-programmer.ts status              # who is in the office, what is take
 node pair-programmer.ts claim "TICKET-42 add auth middleware"
 node pair-programmer.ts next                # pick up work a teammate handed you
 node pair-programmer.ts report <task_key> "token bucket, 60 a minute" done
-node --test                                 # 9 tests
 ```
 
-The CLI runs the whole loop, so you can try it before you wire up a harness.
+The CLI runs the whole loop, so you can try it before you wire up a harness. To
+run the test suite, clone the repo and `node --test`.
 
 ## Limits
 
@@ -144,10 +148,10 @@ The CLI runs the whole loop, so you can try it before you wire up a harness.
 
 ## Built with
 
-Node 22 and nothing else. One file, 189 lines of code, zero dependencies, no
-build step, no database, no cloud service. The board lives in memory on the
-machine that ran `open`, and every other desk talks to it over HTTP. That is the
-point of the size: you can read the whole thing in one sitting, and nothing in it
-can break because a package changed under you.
+Node 22 and nothing else. **One file, 189 lines of code (under 200 LOC), zero
+dependencies, no build step, no database, no cloud service.** The board lives in
+memory on the machine that ran `open`, and every other desk talks to it over
+HTTP. That is the point of the size: you can read the whole thing in one
+sitting, and nothing in it can break because a package changed under you.
 
 MIT licensed. Pair it with your team, tell me what breaks.
