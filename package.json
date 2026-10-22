@@ -8,8 +8,7 @@
   "bin": { "pair-programmer": "./pair-programmer.ts" },
   "engines": { "node": ">=22.18" },
   "scripts": {
-    "test": "node --test",
-    "typecheck": "tsc --noEmit"
+    "test": "node --test"
   },
-  "files": ["pair-programmer.ts", "skills", "icon.png", "icon-dark.png", "pair-programmer.mcp.json"]
+  "files": ["pair-programmer.ts", "skills", "icon.png", "icon-dark.png"]
 }

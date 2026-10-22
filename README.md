@@ -1,3 +1,5 @@
+<picture><source media="(prefers-color-scheme: dark)" srcset="icon-dark.png"><img src="icon.png" width="88" alt="Pair Programmer"></picture>
+
 # Pair Programmer: pair programming for a team of agents
 
 **One shared office for every teammate's agent. They stop doing the same job, and they hand work to whoever is free.**
@@ -73,8 +75,15 @@ Set up Pair Programmer for me.
    Use whatever config format my harness reads.
 3. Put SKILL.md where my harness keeps skills, or paste it into AGENTS.md.
 4. Run `node <absolute path> config` and show me the output.
-5. Tell me the command I host the office with, and what my teammates run.
+5. Then ask me one question: am I opening the office, or joining a teammate's?
+   If I am opening it, run `node <absolute path> open` and give me the join code
+   it prints. If I am joining, ask me for the code and run
+   `node <absolute path> join <code>`.
 ```
+
+Most people who install this are the second case. They are joining an office
+somebody on the team already opened, so they need a code from that person and
+nothing else.
 
 What it should end up writing, and the same shape in every harness:
 

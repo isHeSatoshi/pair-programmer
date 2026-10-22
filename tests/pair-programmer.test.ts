@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -87,6 +87,38 @@ test('the demo: two agents, one ticket, no duplicated work', () => {
 test('the join code printed in the README is a real code', () => {
   assert.deepEqual(readJoinCode('R2M0-2AGX-1PYG'), ['192.168.1.42', 7437]);
   assert.equal(joinCode('192.168.1.42', 7437), 'R2M0-2AGX-1PYG');
+});
+
+test('the files the README tells you to download are the files in this repo', () => {
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+  const paths = [...readme.matchAll(/raw\.githubusercontent\.com\/[\w.-]+\/[\w.-]+\/main\/(\S+)/g)].map(m => m[1]);
+  assert.equal(new Set(paths).size, 2, 'the install is two files');
+  for (const path of new Set(paths)) {
+    assert.ok(existsSync(join(ROOT, path)), `the README says to download ${path}, which is not in the repo`);
+  }
+});
+
+test('the size claim in the README matches the source', () => {
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+  const lines = readFileSync(join(ROOT, 'pair-programmer.ts'), 'utf8').split('\n');
+  const code = lines.filter(line => line.trim() && !line.trim().startsWith('//')).length;
+  assert.equal(code, Number(readme.match(/(\d+) lines of code/)?.[1]), 'the README line count is stale');
+  assert.ok(code < 200, `${code} lines of code is over the 200 the README claims`);
+  assert.match(readme, /under 200 LOC/);
+});
+
+test('config tells you how to host or join, not only how to wire up MCP', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'pair-programmer-config-'));
+  const out = await new Promise<string>(resolve => {
+    const child = spawn(process.execPath, [join(ROOT, 'pair-programmer.ts'), 'config'],
+      { env: { ...process.env, PAIRPROGRAMMER_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let text = '';
+    child.stdout.on('data', (chunk: Buffer) => (text += chunk));
+    child.on('exit', () => resolve(text));
+  });
+  assert.match(out, /node \S+pair-programmer\.ts open/, 'config must say how to open the office');
+  assert.match(out, /node \S+pair-programmer\.ts join <code>/, 'config must say how to join one');
+  assert.ok(existsSync(join(home, 'mcp.json')), 'config writes the mcp json it points at');
 });
 
 test('the CLI runs the whole loop: claim, conflict, delegate, pick up, report', async () => {
