@@ -134,6 +134,108 @@ test('skills and the shared log reach everybody in the office', () => {
   assert.equal(b.actions.read({ last: 1 }).log.length, 1);
 });
 
+test('work stops on a question and picks back up when somebody answers it', () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
+  b.sit(alice);
+  b.sit(bob);
+  b.actions.claim({ ...alice, task: 'TICKET-42 rotate the staging key' });
+  const parked = b.actions.ask({ ...alice, task: 'TICKET-42 rotate the staging key',
+    question: 'Which vault does staging read from?', options: ['vault', 'the .env'] });
+  assert.equal(parked.waiting, true);
+  const task = b.actions.status().tasks.find((t: any) => t.task_key === parked.task_key);
+  assert.equal(task.state, 'waiting');
+  assert.equal(task.waiting_on, 'Which vault does staging read from?');
+  assert.equal(b.actions.take({ ...alice }).tasks.length, 0, 'the holder does not get it back while the question is open');
+  b.actions.answer({ ...bob, task_key: parked.task_key, answer: 'the .env on the deploy box' });
+  const resumed = b.actions.take({ ...alice }).tasks;
+  assert.equal(resumed.length, 1, 'the answer hands the work back to whoever parked it');
+  assert.equal(resumed[0].answer.text, 'the .env on the deploy box');
+  assert.equal(b.actions.ask({ ...alice, task: 'nothing' }).ok, false, 'a question is required');
+});
+
+test('work nobody has touched for 45 minutes is up for grabs again', () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
+  b.sit(alice);
+  b.sit(bob);
+  const title = 'TICKET-42 add auth middleware';
+  b.actions.claim({ ...alice, task: title });
+  assert.equal(b.actions.claim({ ...bob, task: title }).status, 'conflict');
+  const real = Date.now;
+  Date.now = () => real() + 46 * 60e3;
+  try {
+    assert.equal(b.actions.status().tasks[0].state, 'stale');
+    const taken = b.actions.claim({ ...bob, task: title });
+    assert.equal(taken.status, 'claimed', 'a claim that went quiet does not hold the task hostage');
+    assert.ok(taken.history.some((e: any) => /took over from alice/.test(e.text)), 'and the taker is told why');
+  } finally { Date.now = real; }
+});
+
+test('a delegation waits for a teammate who has not connected yet', () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' };
+  b.sit(alice);
+  const handed = b.actions.delegate({ ...alice, task: 'TICKET-51 rate limit', to: 'bob' });
+  assert.equal(handed.delegated_to.owner, 'bob');
+  assert.match(handed.message, /not at a desk/);
+  assert.equal(b.actions.take({ ...alice }).tasks.length, 0, 'and it is not offered to anybody else');
+  b.sit({ session_id: 'b', owner: 'bob' });
+  assert.equal(b.actions.take({ session_id: 'b', owner: 'bob' }).tasks[0].title, 'TICKET-51 rate limit');
+  // a name typed in a different case still reaches the desk that is here
+  const again = b.actions.delegate({ ...alice, task: 'TICKET-52 second look', to: 'BOB' });
+  assert.equal(again.delegated_to.owner, 'bob');
+  assert.equal(b.actions.take({ session_id: 'b3', owner: 'Bob' }).tasks[0].title, 'TICKET-52 second look');
+});
+
+test('a memory can be attached to the files it is about', () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' };
+  b.sit(alice);
+  b.actions.remember({ ...alice, key: 'auth convention', value: 'tokens go in the header', files: ['src/auth.py'] });
+  b.actions.remember({ ...alice, key: 'deploy', value: 'staging reads the .env' });
+  assert.equal(b.actions.recall({ files: ['src/auth.py'] }).memories.length, 1);
+  assert.equal(b.actions.recall({ files: ['src/auth.py'] }).memories[0].key, 'auth convention');
+  assert.equal(b.actions.recall({ files: ['src/other.py'] }).memories.length, 0);
+  const claimed = b.actions.claim({ ...alice, task: 'TICKET-42 auth work', files: ['src/auth.py'] });
+  assert.equal(claimed.known[0].key, 'auth convention', 'a claim hands back what the team knows about those files');
+});
+
+test('the board is written down, so restarting the host does not lose the team', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'pair-programmer-board-')), 'board.json');
+  const alice = { session_id: 'a', owner: 'alice' };
+  const first = createBoard(file);
+  first.sit(alice);
+  first.actions.claim({ ...alice, task: 'TICKET-42 add auth middleware' });
+  first.actions.remember({ ...alice, key: 'test runner', value: 'node --test' });
+  first.actions.say({ ...alice, text: 'staging is down, do not deploy' });
+
+  const second = createBoard(file);
+  assert.equal(second.actions.recall({ query: 'runner' }).memories[0].value, 'node --test');
+  assert.equal(second.actions.read({}).log[0].text, 'staging is down, do not deploy');
+  assert.equal(second.actions.claim({ session_id: 'b', owner: 'bob', task: 'TICKET-42 add auth middleware' }).status,
+    'conflict', 'the claim came back too');
+  assert.deepEqual(second.actions.status().sessions, [], 'who is in the office is not written down');
+});
+
+test('pair_wait returns the moment work lands instead of polling', async () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
+  b.sit(alice);
+  b.sit(bob);
+  const waiting = b.actions.wait({ ...bob, seconds: 5 });
+  setTimeout(() => b.actions.delegate({ ...alice, task: 'TICKET-51 rate limit', to: 'bob' }), 1100);
+  const arrived = await waiting;
+  assert.equal(arrived.arrived, true);
+  assert.equal(arrived.tasks[0].title, 'TICKET-51 rate limit');
+
+  const quiet = createBoard();
+  quiet.sit(bob);
+  const nothing = await quiet.actions.wait({ ...bob, seconds: 1 });
+  assert.equal(nothing.tasks.length, 0);
+  assert.match(nothing.note, /nothing arrived/);
+});
+
 test('posted work goes to whoever asks first, a delegation only to its target', () => {
   const b = createBoard();
   const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
@@ -254,6 +356,7 @@ test('the CLI runs the whole loop: claim, conflict, delegate, pick up, report', 
     assert.match(picked, /^picked up\s+TICKET-51 write the rate limit middleware/);
     assert.match(await run('bob', 'report', picked.split(/\s+/).pop()!, 'token bucket', 'done'),
       /^reported\s+done/);
+    assert.match(await run('bob', 'wait', '1'), /nothing arrived while you waited/);
     const board = await run('bob', 'status');
     assert.match(board, /alice/);
     assert.match(board, /TICKET-42 add auth middleware/);
@@ -296,7 +399,7 @@ test('the MCP server answers initialize, lists the tools and runs them', async (
                                             clientInfo: { name: 'test', version: '1' } });
     assert.equal(init.result.serverInfo.name, 'pair-programmer');
     const tools = await ask('tools/list');
-    assert.equal(tools.result.tools.length, 14);
+    assert.equal(tools.result.tools.length, 17);
     const reply = await ask('tools/call', { name: 'pair_claim',
                                             arguments: { task: 'TICKET-42 add auth middleware' } });
     const outcome = JSON.parse(reply.result.content[0].text);
@@ -307,6 +410,11 @@ test('the MCP server answers initialize, lists the tools and runs them', async (
     assert.equal(JSON.parse(remembered.result.content[0].text).remembered, true);
     const recalled = await ask('tools/call', { name: 'pair_recall', arguments: { query: 'runner' } });
     assert.equal(JSON.parse(recalled.result.content[0].text).memories[0].value, 'node --test');
+    const parked = await ask('tools/call', { name: 'pair_ask', arguments: {
+      task: 'TICKET-42 add auth middleware', question: 'which vault does staging read from?' } });
+    assert.equal(JSON.parse(parked.result.content[0].text).waiting, true);
+    const waited = await ask('tools/call', { name: 'pair_wait', arguments: { seconds: '1' } });
+    assert.equal(JSON.parse(waited.result.content[0].text).tasks.length, 0);
     const read = await ask('tools/call', { name: 'pair_result',
                                             arguments: { task_key: outcome.task_key } });
     assert.equal(JSON.parse(read.result.content[0].text).ok, false);

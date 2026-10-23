@@ -4,7 +4,7 @@
 
 **One shared office for every teammate's agent. They stop doing the same job, and they hand work to whoever is free.**
 
-**One file, under 300 LOC. No dependencies, no build step, no `npm install`.**
+**One file, 321 lines of code (under 350 LOC). No dependencies, no build step, no `npm install`.**
 
 Local first. No account, no cloud, no bill. One of you runs the office and everybody else joins over the LAN.
 
@@ -127,9 +127,19 @@ Node 22.18 or newer. TypeScript runs natively, so there is nothing to build.
 - **A delegation is a handoff, a posted task is an offer.** Delegate when you
   know who should take it. Post when you do not care, and the next agent to look
   for work picks it up. A cron or a webhook posts the same way.
+- **A task keeps its whole story.** One record per piece of work holds who has
+  it, how far it got, what it is waiting on and what happened along the way, so
+  picking up somebody else's task starts you where they stopped instead of at
+  the beginning.
+- **Ask instead of guessing.** An agent that hits a decision it should not make
+  alone parks the task with a question. Whoever can answer does, and the agent
+  holding it picks it back up on its next turn.
+- **Nothing is held forever.** Work nobody has touched for 45 minutes is up for
+  grabs again, so a closed laptop does not block the team for the afternoon.
 - **The office remembers so the next agent does not have to.** A convention, a
   gotcha, a command that works: written down once, read by every agent on the
-  team, across harnesses and across sessions.
+  team, across harnesses and across sessions. It is written to disk, so a
+  restart of the host does not lose it.
 - **Team skills are one document, not five.** One person publishes how this team
   does things, and every agent reads it instead of each person briefing their own.
 
@@ -140,8 +150,11 @@ Node 22.18 or newer. TypeScript runs natively, so there is nothing to build.
 | `pair_release` | Let the work go so somebody else can take it |
 | `pair_delegate` | Hand work to one teammate's session with a brief |
 | `pair_next_task` | Pick up work handed to you, or posted for whoever is free |
-| `pair_report` | Say it is done, or say it is blocked |
+| `pair_wait` | Hold on until work lands, instead of polling or idling |
+| `pair_report` | Say how it is going, or that it is done or blocked |
 | `pair_result` | Read what came back from work you handed over |
+| `pair_ask` | Park the work on a question somebody else has to answer |
+| `pair_answer` | Answer a parked question and unblock that task |
 | `pair_remember` | Write down something the whole team should know |
 | `pair_recall` | Read what the team already knows, before you work it out again |
 | `pair_share_skill` | Publish a team skill or convention once, for every agent |
@@ -149,6 +162,26 @@ Node 22.18 or newer. TypeScript runs natively, so there is nothing to build.
 | `pair_say` | Leave a heads up in the shared log |
 | `pair_read` | Read the recent shared log |
 | `pair_post` | Post work for whoever is free |
+
+## Asking instead of guessing
+
+The expensive failure is not a wrong answer, it is an agent that invents one. A
+task can stop and wait for a person instead, and it keeps its place in the queue
+while it waits:
+
+```
+pair_ask(task="TICKET-42 rotate the staging key", question="Which vault does staging read from?",
+         options=["aws-secrets-manager", "the .env on the deploy box"])
+```
+
+The task is now `waiting`, and it says so in `pair_status` so a human can see
+who is blocked on what. Somebody with the answer calls `pair_answer`, and the
+agent that parked it picks it up on its next `pair_next_task` with the answer
+attached. Nobody guesses, and nothing is lost in a chat window.
+
+`pair_wait` is the same idea for an agent with nothing to do: instead of polling
+`pair_next_task` in a loop or giving up and idling, it holds the call open for up
+to a minute and returns the moment work lands.
 
 ## Triggers
 
@@ -179,7 +212,9 @@ node pair-programmer.ts join localhost:7437 # ...or by address, over a tunnel or
 node pair-programmer.ts status              # who is in the office, what is taken
 node pair-programmer.ts claim "TICKET-42 add auth middleware"
 node pair-programmer.ts next                # pick up work handed to you, or posted for anyone
+node pair-programmer.ts wait 60             # hold on until work lands
 node pair-programmer.ts report <task_key> "token bucket, 60 a minute" done
+node pair-programmer.ts answer <task_key> "staging reads from the .env on the deploy box"
 node pair-programmer.ts post "TICKET-94 write the migration guide"
 node pair-programmer.ts remember "test runner" "node --test, no trailing slash"
 node pair-programmer.ts recall test
@@ -261,12 +296,16 @@ or with a tunnel that requires a login.
 ## Limits
 
 - **The host has to stay on.** If that machine sleeps, the board goes with it.
-  Your code is safe, the claims, the memory and the log are gone.
-- **Memory is a shared scratchpad, not a knowledge base.** It lives in the host's
-  memory, it is capped, and it disappears when the office closes. Write down what
-  saves the next agent time, not everything you learn.
-- **The memory is team-wide and unpartitioned.** Everybody in the office reads
-  and writes the same keys. There is no per-person or per-repo scope.
+  Your code is safe. The work on the board is written to
+  `~/.pair-programmer/board.json` after every change, so restarting the host
+  brings back the claims, the memory and the log.
+- **Who is in the office does not survive a restart.** Desks are live, not
+  written down: a desk that stopped calling is gone, which is what you want. The
+  work stays; the people have to come back.
+- **Memory is a shared scratchpad, not a knowledge base.** It is written to
+  disk, but it is capped and unpartitioned: everybody in the office reads and
+  writes the same keys, with no per-person or per-repo scope. Treat it as notes
+  for the next agent rather than a wiki.
 - **`/trigger` is as open as the rest of the board.** Anyone who can reach the
   host can post work. Do not point a public webhook at it.
 - **It is advisory.** The office will not stop an agent from editing a file. It
@@ -282,10 +321,11 @@ or with a tunnel that requires a login.
 
 ## Built with
 
-Node 22 and nothing else. **One file, 291 lines of code (under 300 LOC), zero
-dependencies, no build step, no database, no cloud service.** The board lives in
-memory on the machine that ran `open`, and every other desk talks to it over
-HTTP. That is the point of the size: you can read the whole thing in one
-sitting, and nothing in it can break because a package changed under you.
+Node 22 and nothing else. **One file, 321 lines of code (under 350 LOC), zero
+dependencies, no build step, no database, no cloud service.** The board lives on
+the machine that ran `open`: one process holding it in memory, one JSON file so
+it survives a restart, and every other desk talking to it over HTTP. That is the
+point of the size: you can read the whole thing in one sitting, and nothing in it
+can break because a package changed under you.
 
 MIT licensed. Pair it with your team, tell me what breaks.
