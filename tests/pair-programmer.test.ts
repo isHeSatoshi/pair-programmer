@@ -181,6 +181,53 @@ test('config tells you how to host or join, not only how to wire up MCP', async 
   assert.ok(existsSync(join(home, 'mcp.json')), 'config writes the mcp json it points at');
 });
 
+test('a failed join says which of the three causes it was, not just "not answering"', async () => {
+  const port = await freePort();
+  const home = mkdtempSync(join(tmpdir(), 'pair-programmer-join-'));
+  const run = (...args: string[]) => new Promise<string>(resolve => {
+    const child = spawn(process.execPath, [join(ROOT, 'pair-programmer.ts'), ...args], {
+      env: { ...process.env, PAIRPROGRAMMER_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = ''; child.stdout.on('data', (c: Buffer) => (out += c)); child.stderr.on('data', (c: Buffer) => (out += c));
+    child.on('exit', () => resolve(out.trim()));
+  });
+
+  // nothing listening: the host is not running. This is not a firewall problem.
+  assert.match(await run('join', `127.0.0.1:${port}`), /nothing is listening.*still running "open"/);
+
+  // a name that cannot resolve is reported as a timeout by fetch, so it must not
+  // be blamed on the firewall, which would send the user to the wrong fix.
+  const named = await run('join', 'no-such-host.invalid:7437');
+  assert.match(named, /name is wrong/);
+  assert.doesNotMatch(named, /That is what a firewall looks like/);
+
+  // an address that cannot be a naming mistake, and still times out, is a firewall.
+  assert.match(await run('join', '10.255.255.1:7437'), /That is what a firewall looks like/);
+
+  // a short argument is still read as a code, not as an address.
+  assert.match(await run('join', 'ABC'), /12 characters/);
+});
+
+test('join takes an address as well as a code, for a tunnel or a VPN', async () => {
+  const port = await freePort();
+  const server = await serve(port, createBoard());
+  const home = mkdtempSync(join(tmpdir(), 'pair-programmer-addr-'));
+  const run = (...args: string[]) => new Promise<string>(resolve => {
+    const child = spawn(process.execPath, [join(ROOT, 'pair-programmer.ts'), ...args], {
+      env: { ...process.env, PAIRPROGRAMMER_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = ''; child.stdout.on('data', (c: Buffer) => (out += c)); child.stderr.on('data', (c: Buffer) => (out += c));
+    child.on('exit', () => resolve(out.trim()));
+  });
+
+  try {
+    assert.match(await run('join', `127.0.0.1:${port}`), /you are in/);
+    assert.match(await run('join', `http://127.0.0.1:${port}`), /you are in/);
+    // and the code form still works, carrying the same address
+    assert.match(await run('join', joinCode('127.0.0.1', port)), /you are in/);
+  } finally {
+    server.close();
+  }
+});
+
 test('the CLI runs the whole loop: claim, conflict, delegate, pick up, report', async () => {
   const port = await freePort();
   const server = await serve(port, createBoard());

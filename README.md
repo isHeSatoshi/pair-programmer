@@ -44,10 +44,17 @@ alice$ node pair-programmer.ts open
   the office is open  192.168.1.42:7437
   join code   R2M0-2AGX-1PYG
   teammates run  node pair-programmer.ts join R2M0-2AGX-1PYG
+  if they cannot reach you, this machine has to allow inbound 7437
+    netsh advfirewall firewall add rule name="Pair Programmer" dir=in action=allow protocol=TCP localport=7437
 
 bob$ node pair-programmer.ts join R2M0-2AGX-1PYG
 you are in  the office is at http://192.168.1.42:7437
 ```
+
+The guest reaches the host directly, so the host has to accept one inbound port.
+That is the only setup step, and it is the thing that goes wrong most often. If
+somebody cannot join, the error names the cause, and
+[When somebody cannot join](#when-somebody-cannot-join) has the fix.
 
 ## Install
 
@@ -168,6 +175,7 @@ From wherever you put `pair-programmer.ts`:
 ```bash
 node pair-programmer.ts open                # host the office, print the join code
 node pair-programmer.ts join R2M0-2AGX-1PYG # a teammate joins from another machine
+node pair-programmer.ts join localhost:7437 # ...or by address, over a tunnel or a VPN
 node pair-programmer.ts status              # who is in the office, what is taken
 node pair-programmer.ts claim "TICKET-42 add auth middleware"
 node pair-programmer.ts next                # pick up work handed to you, or posted for anyone
@@ -182,6 +190,73 @@ node pair-programmer.ts read
 
 The CLI runs the whole loop, so you can try it before you wire up a harness. To
 run the test suite, clone the repo and `node --test`.
+
+## When somebody cannot join
+
+The guest machine reaches the host directly, so the host has to accept a
+connection on port 7437. That is the one thing that goes wrong, and the error
+tells you which of three causes it was.
+
+| What you see | What it means | What to do |
+| --- | --- | --- |
+| `nothing is listening at ...` | The host is not running, or it is on a different port | Start `open` on the host again |
+| `never answered. That is what a firewall looks like` | Packets are being dropped. The host's firewall is blocking inbound 7437 | Allow it, below |
+| `this machine cannot see ... at all` | The two machines are not on the same network | Same wifi, or use one of the options further down |
+
+**Allow the port on the host.** Once, and it survives a reboot.
+
+```bash
+# Windows, in an Administrator terminal
+netsh advfirewall firewall add rule name="Pair Programmer" dir=in action=allow protocol=TCP localport=7437
+
+# Linux, if ufw is on
+sudo ufw allow 7437
+
+# macOS
+# Usually nothing to do. If the firewall is on, allow incoming for node.
+```
+
+**Some networks block it anyway.** Guest wifi, hotel wifi and a lot of office
+networks turn on client isolation, which stops two machines on the same network
+from talking to each other at all. No firewall rule fixes that, because the
+network itself is refusing. This is the case where the answer is not a setting.
+
+## When you are not on the same network
+
+Pair Programmer has no server to route through, so a teammate on a different
+network needs a path to the host. All of these keep the office on your own
+machines, and none of them change the code.
+
+**Put both machines on one private network.** [Tailscale](https://tailscale.com)
+and ZeroTier give each machine an address that works from anywhere, and the
+office behaves exactly as it does on a LAN:
+
+```bash
+tailscale ip -4                       # on the host, to get its address
+node pair-programmer.ts join 100.101.102.103:7437
+```
+
+`join` takes an address as well as a code, because a code only carries a LAN
+address. Anything with a dot or a colon in it is read as an address.
+
+**Forward the port over SSH.** If you can already SSH to the host, one command
+makes its office local to you:
+
+```bash
+ssh -N -L 7437:localhost:7437 you@the-host
+node pair-programmer.ts join localhost:7437
+```
+
+**Give the host a public address.** A tunnel puts the office on the internet:
+
+```bash
+cloudflared tunnel --url http://localhost:7437
+```
+
+That prints a public `https://` address, and everyone joins it. Read the limits
+first: the board has no authentication, so a public tunnel means anyone with the
+URL can read the board, claim work and post to it. Use it on a private network,
+or with a tunnel that requires a login.
 
 ## Limits
 
@@ -200,12 +275,14 @@ run the test suite, clone the repo and `node --test`.
   file get flagged, and the merge is still on you.
 - **No shared ticket id means only identical wording matches.** Put the id in.
 - **No authentication.** Anyone who can reach the host can read the board, claim
-  work and write to it. Fine for an office, wrong for a shared network.
-- **IPv4 on a LAN.** The code carries an IPv4 address.
+  work and write to it. Fine for an office, wrong for a shared network, and
+  wrong for anything you have put on the internet.
+- **IPv4 on a LAN by default.** The code carries an IPv4 address. On a VPN or
+  over a tunnel, join by address instead of by code.
 
 ## Built with
 
-Node 22 and nothing else. **One file, 268 lines of code (under 300 LOC), zero
+Node 22 and nothing else. **One file, 291 lines of code (under 300 LOC), zero
 dependencies, no build step, no database, no cloud service.** The board lives in
 memory on the machine that ran `open`, and every other desk talks to it over
 HTTP. That is the point of the size: you can read the whole thing in one

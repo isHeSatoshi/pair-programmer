@@ -169,10 +169,29 @@ export const serve = (port: number, board: ReturnType<typeof createBoard>) =>
     server.listen(port, '0.0.0.0', () => resolve(server));
   });
 
+// A failed join has three different causes that need three different answers.
+// "refused" means the host is not running. A timeout means something dropped the
+// packets: on a LAN that is the host's firewall, unless the name is simply wrong.
+const why = (error: Bag, address: string) => {
+  const code = error?.cause?.code || error?.code || '';
+  if (code === 'ECONNREFUSED') return `nothing is listening at ${address}. Is the host still running "open"?`;
+  if (String(code).includes('TIMEOUT')) {
+    // A bad hostname is reported as a timeout too, so only blame the firewall when
+    // the address is a literal, which cannot be a naming mistake.
+    const literal = /^\d+\.\d+\.\d+\.\d+$/.test(address.split(':')[0]);
+    return literal
+      ? `${address} never answered. That is what a firewall looks like: the host has to allow inbound ${PORT}. See "When somebody cannot join" in the README.`
+      : `${address} never answered. Either that name is wrong, or the host's firewall is dropping it. It has to allow inbound ${PORT}.`;
+  }
+  if (code === 'EHOSTUNREACH' || code === 'ENETUNREACH') return `this machine cannot see ${address} at all. Are you on the same network? Guest and office wifi often block machines from talking to each other.`;
+  if (code === 'ENOTFOUND') return `${address} is not a name this machine can resolve.`;
+  return `${address} is not answering${code ? ` (${code})` : ''}`;
+};
+
 const call = async (base: string, action: string, fields: Bag = {}): Promise<Bag> => {
   try { const r = await fetch(`${base}/call`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...fields }) });
     return await r.json();
-  } catch { return { ok: false, error: `the office at ${base} is not answering` }; }
+  } catch (error) { return { ok: false, error: why(error, base.replace(/^https?:\/\//, '')) }; }
 };
 
 const readConfig = (): Bag => { try { return JSON.parse(readFileSync(CONFIG, 'utf8').replace(/^﻿/, '')); } catch { return {}; } };
@@ -233,16 +252,30 @@ const cli = async (argv: string[]) => {
     const all = Object.values(networkInterfaces()).flatMap(l => l || []).filter(e => e.family === 'IPv4' && !e.internal);
     const address = (all.find(e => e.address.startsWith('192.168.') || e.address.startsWith('10.')) || all[0])?.address || '127.0.0.1';
     const code = joinCode(address, PORT); writeConfig({ port: PORT, hub: null });
-    console.log(`the office is open  ${address}:${PORT}\n  join code   ${code}\n  teammates run  node pair-programmer.ts join ${code}`);
+    // The port has to be reachable from the other machine, and a firewall is the
+    // usual reason it is not. Say so here, where the host is looking, not later.
+    const allow = process.platform === 'win32'
+      ? 'netsh advfirewall firewall add rule name="Pair Programmer" dir=in action=allow protocol=TCP localport=' + PORT
+      : process.platform === 'darwin' ? 'check System Settings > Network > Firewall' : `allow inbound tcp ${PORT} (ufw allow ${PORT})`;
+    console.log(`the office is open  ${address}:${PORT}\n  join code   ${code}\n  teammates run  node pair-programmer.ts join ${code}\n  if they cannot reach you, this machine has to allow inbound ${PORT}\n    ${allow}`);
     try { await serve(PORT, createBoard()); }
     catch (error) { console.error(`could not open the office on port ${PORT}: ${(error as Error).message}`); return 1; }
   } else if (command === 'join') {
+    // A join code never has a dot or a colon, so anything that does is an address:
+    // an SSH tunnel, a VPN address, or a machine the code cannot describe.
+    const arg = (rest[0] || '').trim();
     let address: string, port: number;
-    try { [address, port] = readJoinCode(rest[0] || ''); } catch (error) { console.error(String((error as Error).message)); return 1; }
-    const reply = await call(`http://${address}:${port}`, 'status', me);
+    if (/[.:]/.test(arg)) {
+      const bare = arg.replace(/^https?:\/\//, ''), cut = bare.lastIndexOf(':');
+      address = cut > 0 ? bare.slice(0, cut) : bare; port = cut > 0 ? Number(bare.slice(cut + 1)) || PORT : PORT;
+    } else {
+      try { [address, port] = readJoinCode(arg); } catch (error) { console.error(String((error as Error).message)); return 1; }
+    }
+    const hub = `http://${address}:${port}`;
+    const reply = await call(hub, 'status', me);
     if (!reply.ok) { console.error(`could not join: ${reply.error}`); return 1; }
-    writeConfig({ hub: `http://${address}:${port}`, port });
-    console.log(`you are in  the office is at http://${address}:${port}`);
+    writeConfig({ hub, port });
+    console.log(`you are in  the office is at ${hub}`);
   } else if (command === 'status') {
     const board = await call(base, 'status', me);
     if (!board.ok) { console.error(board.error); return 1; }
