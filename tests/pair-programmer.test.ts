@@ -103,8 +103,68 @@ test('the size claim in the README matches the source', () => {
   const lines = readFileSync(join(ROOT, 'pair-programmer.ts'), 'utf8').split('\n');
   const code = lines.filter(line => line.trim() && !line.trim().startsWith('//')).length;
   assert.equal(code, Number(readme.match(/(\d+) lines of code/)?.[1]), 'the README line count is stale');
-  assert.ok(code < 200, `${code} lines of code is over the 200 the README claims`);
-  assert.match(readme, /under 200 LOC/);
+  const claimed = Number(readme.match(/under (\d+) LOC/)?.[1]);
+  assert.ok(claimed, 'the README no longer makes a size claim');
+  assert.ok(code < claimed, `${code} lines of code is over the ${claimed} the README claims`);
+});
+
+test('the team remembers things, and telling it twice corrects the first', () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
+  b.sit(alice);
+  b.sit(bob);
+  b.actions.remember({ ...alice, key: 'test runner', value: 'node --test' });
+  assert.equal(b.actions.recall({ query: 'runner' }).memories[0].value, 'node --test');
+  assert.equal(b.actions.recall({ query: 'nothing here' }).memories.length, 0);
+  b.actions.remember({ ...bob, key: 'test runner', value: 'node --test, no trailing slash' });
+  const found = b.actions.recall({ query: 'runner' }).memories;
+  assert.equal(found.length, 1, 'the same key corrects in place rather than piling up');
+  assert.equal(found[0].by, 'bob');
+  assert.equal(b.actions.recall({}).memories.length, 1, 'an empty query reads everything');
+});
+
+test('skills and the shared log reach everybody in the office', () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' };
+  b.sit(alice);
+  b.actions.share({ ...alice, name: 'release', text: 'Tag on main, never on a branch.' });
+  assert.equal(b.actions.skills().skills[0].name, 'release');
+  b.actions.say({ ...alice, text: 'staging is down, do not deploy' });
+  assert.equal(b.actions.read({}).log[0].text, 'staging is down, do not deploy');
+  assert.equal(b.actions.read({ last: 1 }).log.length, 1);
+});
+
+test('posted work goes to whoever asks first, a delegation only to its target', () => {
+  const b = createBoard();
+  const alice = { session_id: 'a', owner: 'alice' }, bob = { session_id: 'b', owner: 'bob' };
+  b.sit(alice);
+  b.sit(bob);
+  const posted = b.actions.post({ ...alice, task: 'TICKET-90 write the migration guide' });
+  const picked = b.actions.take({ ...bob }).tasks;
+  assert.equal(picked.length, 1);
+  assert.equal(picked[0].to_owner, 'bob');
+  assert.equal(b.actions.take({ ...alice }).tasks.length, 0, 'a posted task is only handed out once');
+  b.actions.report({ ...bob, task_key: posted.task_key, state: 'done', result: 'guide is up' });
+  assert.equal(b.actions.result({ task_key: posted.task_key }).result.result, 'guide is up');
+  b.actions.delegate({ ...alice, task: 'TICKET-91 check it', to: 'bob' });
+  assert.equal(b.actions.take({ ...alice }).tasks.length, 0, 'a delegation is not for anybody else');
+});
+
+test('a cron or a webhook posts work with nothing but a plain text body', async () => {
+  const port = await freePort();
+  const server = await serve(port, createBoard());
+  try {
+    const sent = await fetch(`http://127.0.0.1:${port}/trigger`, { method: 'POST', body: 'TICKET-92 rotate the staging keys' });
+    assert.equal((await sent.json()).ok, true);
+    const picked = await fetch(`http://127.0.0.1:${port}/call`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'take', session_id: 'cron', owner: 'cron' }) });
+    const tasks = (await picked.json()).tasks;
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].title, 'TICKET-92 rotate the staging keys');
+    assert.equal((await fetch(`http://127.0.0.1:${port}/trigger`)).status, 404, 'a GET is not a trigger');
+  } finally {
+    server.close();
+  }
 });
 
 test('config tells you how to host or join, not only how to wire up MCP', async () => {
@@ -189,12 +249,17 @@ test('the MCP server answers initialize, lists the tools and runs them', async (
                                             clientInfo: { name: 'test', version: '1' } });
     assert.equal(init.result.serverInfo.name, 'pair-programmer');
     const tools = await ask('tools/list');
-    assert.equal(tools.result.tools.length, 7);
+    assert.equal(tools.result.tools.length, 14);
     const reply = await ask('tools/call', { name: 'pair_claim',
                                             arguments: { task: 'TICKET-42 add auth middleware' } });
     const outcome = JSON.parse(reply.result.content[0].text);
     assert.equal(outcome.status, 'claimed');
     assert.equal(reply.result.isError, false);
+    const remembered = await ask('tools/call', { name: 'pair_remember',
+                                                 arguments: { key: 'test runner', value: 'node --test' } });
+    assert.equal(JSON.parse(remembered.result.content[0].text).remembered, true);
+    const recalled = await ask('tools/call', { name: 'pair_recall', arguments: { query: 'runner' } });
+    assert.equal(JSON.parse(recalled.result.content[0].text).memories[0].value, 'node --test');
     const read = await ask('tools/call', { name: 'pair_result',
                                             arguments: { task_key: outcome.task_key } });
     assert.equal(JSON.parse(read.result.content[0].text).ok, false);

@@ -44,6 +44,7 @@ export const taskKey = (title: string) => {
 // Everything the office knows. Only the host keeps one.
 export const createBoard = () => {
   const sessions = new Map<string, Bag>(), claims = new Map<string, Bag>(), delegations = new Map<string, Bag>();
+  const memories = new Map<string, Bag>(), skills = new Map<string, Bag>(), log: Bag[] = [];
 
   // A desk shows up by itself the first time it calls.
   const sit = (f: Bag) => {
@@ -82,10 +83,11 @@ export const createBoard = () => {
     return { ok: true, task_key: d.task_key, delegated_to: { owner: target.owner, session_id: target.session_id }, message: `handed to ${target.owner}. They pick it up on their next turn.` };
   };
 
+  // A delegation is addressed to one desk. A posted task is for whoever asks first.
   const take = (f: Bag) => {
-    const tasks = [...delegations.values()].filter(d => d.state === 'pending' && d.to_session === f.session_id);
+    const tasks = [...delegations.values()].filter(d => d.state === 'pending' && (!d.to_session || d.to_session === f.session_id));
     for (const d of tasks) {
-      d.state = 'taken';
+      d.state = 'taken'; d.to_session = f.session_id; d.to_owner = d.to_owner || f.owner || 'someone';
       if (!claims.has(d.task_key)) claims.set(d.task_key, { task_key: d.task_key, title: d.title, files: d.files, owner: d.to_owner, session_id: f.session_id, state: 'claimed' });
     }
     return { ok: true, tasks };
@@ -97,9 +99,53 @@ export const createBoard = () => {
     return found ? { ok: true, result: found } : { ok: false, error: 'no result yet' };
   };
 
-  const status = () => ({ ok: true, sessions: [...sessions.values()], claims: [...claims.values()], delegations: [...delegations.values()] });
+  // What the team learned. The next agent reads it instead of working it out again.
+  const remember = (f: Bag) => {
+    const key = (f.key || '').trim();
+    if (!key) return { ok: false, error: 'a key is required' };
+    memories.set(key.toLowerCase(), { key, value: String(f.value || ''), by: f.owner || 'someone', at: Date.now() });
+    return { ok: true, key, remembered: true };
+  };
 
-  return { sit, actions: { claim, report, delegate, take, result, status } };
+  const recall = (f: Bag) => {
+    const q = (f.query || '').trim().toLowerCase();
+    const found = [...memories.values()].filter(m => !q || m.key.toLowerCase().includes(q) || m.value.toLowerCase().includes(q));
+    return { ok: true, memories: found, ...(found.length ? {} : { note: 'the team has not remembered anything about that yet' }) };
+  };
+
+  // A team skill. One person writes it, every agent on the team reads it.
+  const share = (f: Bag) => {
+    const name = (f.name || '').trim();
+    if (!name) return { ok: false, error: 'a skill name is required' };
+    skills.set(name.toLowerCase(), { name, text: String(f.text || ''), by: f.owner || 'someone', at: Date.now() });
+    return { ok: true, name, shared: true };
+  };
+
+  const skillList = () => ({ ok: true, skills: [...skills.values()] });
+
+  // The shared log: a heads up for the whole team, not a task for one desk.
+  const say = (f: Bag) => {
+    const text = (f.text || '').trim();
+    if (!text) return { ok: false, error: 'nothing to say' };
+    log.push({ at: Date.now(), owner: f.owner || 'someone', text });
+    if (log.length > 500) log.splice(0, log.length - 500);
+    return { ok: true, said: true };
+  };
+
+  const read = (f: Bag) => ({ ok: true, log: log.slice(-Math.min(Number(f.last) || 20, 100)) });
+
+  // Work for whoever is free. A cron or a webhook posts here too.
+  const post = (f: Bag) => {
+    const title = (f.task || '').trim();
+    if (!title) return { ok: false, error: 'a task title is required' };
+    const d = { id: id(), task_key: f.task_key || taskKey(title), title, brief: f.brief || '', files: filesOf(f.files), to_session: '', to_owner: '', state: 'pending', source: f.source || 'posted' };
+    delegations.set(d.id, d);
+    return { ok: true, task_key: d.task_key, waiting: true, message: 'posted for whoever is free. The next agent to call pair_next_task picks it up.' };
+  };
+
+  const status = () => ({ ok: true, sessions: [...sessions.values()], claims: [...claims.values()], delegations: [...delegations.values()], memories: memories.size, skills: [...skills.values()].map(s => s.name), log: log.length });
+
+  return { sit, actions: { claim, report, delegate, take, result, status, remember, recall, share, skills: skillList, say, read, post } };
 };
 
 // Run the host. One process, one board, everybody points at it.
@@ -107,10 +153,13 @@ export const serve = (port: number, board: ReturnType<typeof createBoard>) =>
   new Promise<any>((resolve, reject) => {
     const server = createServer(async (req, res) => {
       const reply = (payload: Bag) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(payload)); };
-      if (req.method !== 'POST' || !req.url?.startsWith('/call')) { res.writeHead(404); return res.end(); }
+      const path = req.url || '';
+      if (req.method !== 'POST' || !(path.startsWith('/call') || path.startsWith('/trigger'))) { res.writeHead(404); return res.end(); }
       let body = ''; for await (const chunk of req) body += chunk;
       let payload: Bag = {};
-      try { payload = JSON.parse(body || '{}'); } catch { /* the board complains */ }
+      // A trigger may be JSON, or just the task in the body: curl -d 'TICKET-9 deploy' host:7437/trigger
+      try { payload = JSON.parse(body || '{}'); } catch { payload = { task: body.trim(), source: 'trigger' }; }
+      if (path.startsWith('/trigger')) { board.sit(payload); return reply(board.actions.post(payload)); }
       const { action, ...fields } = payload;
       board.sit(fields);
       const handler = board.actions[action];
@@ -136,10 +185,17 @@ const TOOLS: Record<string, [string, string, Bag]> = {
   pair_status: ['status', 'Who is in the office and what everybody is working on. Call this before you start a task.', {}],
   pair_claim: ['claim', 'Claim work before you start it, so nobody does the same job twice. Start the title with the ticket id, and list the files you expect to touch.', { task: 's', files: 'a?' }],
   pair_release: ['report', 'Give up a claim so somebody else can take the work. Use it when you stop or hand the work over.', { task_key: 's', state: 'released' }],
-  pair_delegate: ['delegate', 'Hand work to a teammate\'s agent. Use it when their session fits better, or when you would otherwise do it twice.', { task: 's', to: 's', brief: 's?', files: 'a?' }],
-  pair_next_task: ['take', 'Pick up work a teammate\'s agent handed to you. Call it at the start of a turn.', {}],
+  pair_delegate: ['delegate', 'Hand work to one teammate\'s agent. Use it when their session fits better, or when you would otherwise do it twice. Use pair_post instead when you do not care who takes it.', { task: 's', to: 's', brief: 's?', files: 'a?' }],
+  pair_next_task: ['take', 'Pick up work at the start of a turn: either a teammate handed it to you, or somebody posted it for whoever is free. Call it before you start your own work.', {}],
   pair_report: ['report', 'Report that a task is finished or blocked, with a short summary.', { task_key: 's', result: 's', state: 's?' }],
   pair_result: ['result', 'Read the result of work you handed over. Errors until it is done.', { task_key: 's' }],
+  pair_remember: ['remember', 'Save something the whole team should know: a convention, a gotcha, a command that works, a decision you made. The next agent reads it instead of working it out again. Keep it short and specific.', { key: 's', value: 's' }],
+  pair_recall: ['recall', 'Read what the team already remembered. Call it before you spend time working something out, and after somebody tells you something useful. Leave query out to read everything.', { query: 's?' }],
+  pair_share_skill: ['share', 'Publish a team skill or convention once, so every agent on the team reads it instead of each person briefing their own. Use it for how this team does things.', { name: 's', text: 's' }],
+  pair_skills: ['skills', 'Read the team skills and conventions shared in this office. Call it at the start of a task, before you decide how to do the work.', {}],
+  pair_say: ['say', 'Leave a short note in the shared log for the whole team. Not a task and not addressed to anyone: a heads up, a blocker, a file you just changed.', { text: 's' }],
+  pair_read: ['read', 'Read the recent shared log, oldest first. Bounded to the last 20 entries unless you ask for more.', { last: 's?' }],
+  pair_post: ['post', 'Post work for whoever is free, when you do not know or care which teammate takes it. The next agent to call pair_next_task picks it up. A cron or a webhook posts here too.', { task: 's', brief: 's?', files: 'a?' }],
 };
 
 const TYPES: Bag = { s: { type: 'string' }, a: { type: 'array', items: { type: 'string' } } };
@@ -208,6 +264,27 @@ const cli = async (argv: string[]) => {
     const state = ['done', 'failed', 'released'].includes(rest[rest.length - 1]) ? rest.pop() : 'done';
     const reply = await call(base, 'report', { ...me, task_key: rest[0], state, result: rest.slice(1).join(' ') });
     console.log(reply.ok ? `reported  ${reply.state}  ${reply.task_key}` : reply.error);
+  } else if (command === 'post') {
+    const reply = await call(base, 'post', { ...me, task: rest.join(' ').replace(/^"|"$/g, '') });
+    console.log(reply.ok ? `posted  ${reply.task_key}` : reply.error);
+  } else if (command === 'remember') {
+    const [key, ...value] = rest, reply = await call(base, 'remember', { ...me, key, value: value.join(' ') });
+    console.log(reply.ok ? `remembered  ${key}` : reply.error);
+  } else if (command === 'recall') {
+    const reply = await call(base, 'recall', { ...me, query: rest.join(' ') });
+    console.log(reply.ok ? reply.memories.map((m: Bag) => `${m.key}  ${m.value}  (${m.by})`).join('\n') || 'the team has not remembered anything yet' : reply.error);
+  } else if (command === 'share') {
+    const [name, ...text] = rest, reply = await call(base, 'share', { ...me, name, text: text.join(' ') });
+    console.log(reply.ok ? `shared  ${name}` : reply.error);
+  } else if (command === 'skills') {
+    const reply = await call(base, 'skills', me);
+    console.log(reply.ok ? reply.skills.map((s: Bag) => `${s.name}  (${s.by})\n  ${s.text}`).join('\n') || 'the team has not shared any skills yet' : reply.error);
+  } else if (command === 'say') {
+    const reply = await call(base, 'say', { ...me, text: rest.join(' ') });
+    console.log(reply.ok ? 'said' : reply.error);
+  } else if (command === 'read') {
+    const reply = await call(base, 'read', { ...me, last: rest[0] });
+    console.log(reply.ok ? reply.log.map((l: Bag) => `${l.owner}  ${l.text}`).join('\n') || 'the log is empty' : reply.error);
   } else if (command === 'config') {
     // No vendor directory and no vendor manifest: the server speaks MCP over stdio,
     // so every harness wires it up the same way, by pointing at this file.
@@ -217,7 +294,22 @@ const cli = async (argv: string[]) => {
     mkdirSync(HOME, { recursive: true });
     writeFileSync(join(HOME, 'mcp.json'), JSON.stringify({ mcpServers: { 'pair-programmer': { command: 'node', args: [self, 'mcp'] } } }, null, 2) + '\n');
     console.log(`the office speaks MCP over stdio, so any harness can run it:\n  server  node ${self} mcp\n\n  claude code  claude mcp add pair-programmer -- node ${self} mcp\n  codex        [mcp_servers.pair-programmer]  command = "node"  args = ["${self}", "mcp"]\n  anything else  point its MCP config at the server command above\n\n  a copy of the json is in ${join(HOME, 'mcp.json')}\n\n  now pick one:\n    you open the office  node ${self} open   (prints the join code to share)\n    you join a teammate  node ${self} join <code>   (ask them for the code)`);
-  } else console.log('pair-programmer\n  open      open the office and print the join code\n  join <code>   join somebody else\'s office\n  status     who is in the office\n  claim <work>    claim a piece of work\n  next      pick up work a teammate handed you\n  report <key> [result] [done|failed|released]   say how it went\n  delegate <work> <who>   hand work over\n  config    print the MCP config for your harness');
+  } else console.log(['pair-programmer',
+    '  open            open the office and print the join code',
+    '  join <code>     join somebody else\'s office',
+    '  status          who is in the office and what is taken',
+    '  claim <work>    claim a piece of work',
+    '  next            pick up work handed to you, or posted for anyone',
+    '  report <key> [result] [done|failed|released]   say how it went',
+    '  delegate <work> <who>   hand work to one teammate',
+    '  post <work>     post work for whoever is free',
+    '  remember <key> <what>   save something for the whole team',
+    '  recall [query]  read what the team remembered',
+    '  share <name> <text>     publish a team skill',
+    '  skills          read the team skills',
+    '  say <note>      leave a note in the shared log',
+    '  read [n]        read the recent shared log',
+    '  config          print the MCP config for your harness'].join('\n'));
   return 0;
 };
 
