@@ -115,6 +115,25 @@ Codex, Cursor, Zed and the rest take a config of the same shape.
 
 Node 22.18 or newer. TypeScript runs natively, so there is nothing to build.
 
+## Built with Droid
+
+Pair Programmer was written in Droid. It ships as an MCP server over stdio, so a
+Droid session loads it the same way it loads any other MCP server: add the
+`mcpServers` entry above and the office is available to that session.
+
+The server is the product. `SKILL.md` is what tells the agent when to reach for
+it, because MCP on its own does not say when. Put it where your harness keeps
+skills, or paste it into `AGENTS.md`, and the agent checks the office before it
+starts work instead of waiting to be asked.
+
+To build the same thing again in Droid, describe the rule rather than the code.
+"A second agent asking for a task somebody already holds should be told who holds
+it" is a rule Droid can write the claim table, the hand-off path and the tests
+for. Read the tests before the behaviour goes anywhere near a repo.
+
+Every other harness reads the same config shape, so the server and the skill file
+are the only two files a teammate needs.
+
 ## How it works
 
 - **One machine hosts the board.** Everyone else points at it. It holds the
